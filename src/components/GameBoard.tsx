@@ -53,6 +53,8 @@ export function GameBoard({ state, dispatch, myPlayerId }: Props) {
   const [showFullStats, setShowFullStats] = useState(false);
   const [paused, setPaused] = useState(false);
   const [flyCards, setFlyCards] = useState<FlyCard[]>([]);
+  // Tracks whether we already fired DUTCH! optimistically so we don't double-play on server confirm
+  const didOptimisticDutch = useRef(false);
 
   const { playCardSlap, playDraw, playDutch, playError } = useSounds();
 
@@ -138,9 +140,13 @@ export function GameBoard({ state, dispatch, myPlayerId }: Props) {
   const prevPhase = useRef(state.phase);
   useEffect(() => {
     if ((state.phase === 'roundEnd' || state.phase === 'gameEnd') && prevPhase.current === 'playing') {
-      playDutch();
-      setDutchFlash(true);
-      setTimeout(() => setDutchFlash(false), 1200);
+      // Only trigger sound/flash if we didn't already do it optimistically in handlePointerUp
+      if (!didOptimisticDutch.current) {
+        playDutch();
+        setDutchFlash(true);
+        setTimeout(() => setDutchFlash(false), 1200);
+      }
+      didOptimisticDutch.current = false;
       const blitzer = state.players.find(p => p.blitzPile.length === 0);
       if (blitzer) {
         setBlitzPopup(blitzer.name);
@@ -151,6 +157,7 @@ export function GameBoard({ state, dispatch, myPlayerId }: Props) {
       setBlitzPopup(null);
       setShowFullStats(false);
       setPaused(false);
+      didOptimisticDutch.current = false;
     }
     prevPhase.current = state.phase;
   }, [state.phase]);
@@ -272,6 +279,14 @@ export function GameBoard({ state, dispatch, myPlayerId }: Props) {
           ...(pileId === 'new' && dutchSlotIndex !== null ? { slotIndex: dutchSlotIndex } : {}),
         });
         playCardSlap();
+        // Optimistic DUTCH! — fire immediately instead of waiting for server round-trip.
+        // Conditions: valid center play, from blitz pile, last card in pile.
+        if (drag.source.kind === 'blitz' && human.blitzPile.length === 1) {
+          didOptimisticDutch.current = true;
+          playDutch();
+          setDutchFlash(true);
+          setTimeout(() => setDutchFlash(false), 1200);
+        }
       } else if (postIndex !== null) {
         dispatch({ type: 'PLAY_TO_POST', playerId: human.id, source: drag.source, postIndex: postIndex as 0|1|2 });
         playCardSlap();
