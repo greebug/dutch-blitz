@@ -16,18 +16,28 @@ function getCtx(): AudioContext {
 // Unlock the AudioContext so iOS/Chrome will let us play sound.
 // The silent buffer MUST be started synchronously inside the user-gesture
 // call stack — putting it in a .then() breaks iOS Chrome's gesture gate.
-function unlockAudio() {
+export function unlockAudio() {
   try {
     const ctx = getCtx();
-    // Play a silent 1-sample buffer synchronously — this is what iOS/Chrome require
+    // Always call resume() first — iOS Chrome requires it synchronously
+    if (ctx.state !== 'running') ctx.resume().catch(() => {});
+    // Then immediately start a silent 1-sample buffer (belt-and-suspenders)
     const buf = ctx.createBuffer(1, 1, 22050);
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.connect(ctx.destination);
     src.start(0);
-    // Also resume if suspended (async is fine here since the buffer already started)
-    if (ctx.state !== 'running') ctx.resume().catch(() => {});
   } catch { /* ignore */ }
+}
+
+// Attach listeners at MODULE LOAD so the context is unlocked the moment
+// the user first touches the page — even before GameBoard mounts.
+if (typeof document !== 'undefined') {
+  const vis = () => { if (document.visibilityState === 'visible') unlockAudio(); };
+  document.addEventListener('touchstart',       unlockAudio, { passive: true, capture: true });
+  document.addEventListener('touchend',         unlockAudio, { passive: true, capture: true });
+  document.addEventListener('click',            unlockAudio, { capture: true });
+  document.addEventListener('visibilitychange', vis);
 }
 
 function scheduleNote(
@@ -178,23 +188,8 @@ function playTone(freq: number, duration: number, type: OscillatorType = 'sine',
 export function useSounds() {
   const musicStopRef = useRef<(() => void) | null>(null);
 
-  // Attach unlock handlers. We use persistent (non-once) listeners so that
-  // coming back from a backgrounded state also re-unlocks the context.
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') unlockAudio();
-    };
-    document.addEventListener('touchstart',       unlockAudio,       { passive: true, capture: true });
-    document.addEventListener('touchend',         unlockAudio,       { passive: true, capture: true });
-    document.addEventListener('click',            unlockAudio,       { capture: true });
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => {
-      document.removeEventListener('touchstart',       unlockAudio,       { capture: true });
-      document.removeEventListener('touchend',         unlockAudio,       { capture: true });
-      document.removeEventListener('click',            unlockAudio,       { capture: true });
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, []);
+  // Module-level listeners already handle touchstart/touchend/click/visibilitychange.
+  // Nothing extra to attach here — the useEffect is intentionally empty.
 
   const startMusic = useCallback(() => {
     try {

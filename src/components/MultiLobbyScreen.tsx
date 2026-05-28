@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { CardColor, BotDifficulty } from '../game/types';
 import { LobbyPlayer, LobbyState, RoomConfig, ChatMessage, AuthInfo } from '../hooks/useMultiplayer';
 import { Leaderboard } from './Leaderboard';
+import { unlockAudio } from '../hooks/useSounds';
 
 // ─── Faction config ───────────────────────────────────────────────────────────
 
@@ -129,6 +130,7 @@ export function MultiLobbyScreen({
   function handleAutoJoinSubmit() {
     const n = authInfo ? authInfo.displayName : autoJoinName.trim();
     if (!n) return;
+    unlockAudio(); // pre-warm AudioContext inside this gesture so music works on iOS
     setShowAutoJoin(false);
     if (authInfo) {
       onJoinRoom(initialRoomCode, authInfo.displayName);
@@ -173,6 +175,7 @@ export function MultiLobbyScreen({
 
   function handleCreate() {
     if (!canProceed) return;
+    unlockAudio(); // pre-warm AudioContext inside this gesture so music works on iOS
     if (authInfo) {
       onCreateRoom(authInfo.displayName, { targetScore, botDifficulty });
     } else if (pin.trim().length === 4) {
@@ -186,6 +189,7 @@ export function MultiLobbyScreen({
 
   function handleJoin() {
     if (!canProceed || !joinCode.trim()) return;
+    unlockAudio(); // pre-warm AudioContext inside this gesture so music works on iOS
     if (authInfo) {
       onJoinRoom(joinCode.trim(), authInfo.displayName);
     } else if (pin.trim().length === 4) {
@@ -912,7 +916,7 @@ export function MultiLobbyScreen({
                   All players must pick a faction to start
                 </div>
               )}
-              <button className="start-btn" onClick={onStartGame} disabled={!canStart}>
+              <button className="start-btn" onClick={() => { unlockAudio(); onStartGame(); }} disabled={!canStart}>
                 Start Game ▶
               </button>
             </>
