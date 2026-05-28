@@ -43,7 +43,9 @@ export type GameAction =
   | { type: 'DRAW_WOOD'; playerId: string }
   | { type: 'START_GAME'; config: GameConfig }
   | { type: 'NEXT_ROUND' }
-  | { type: 'BACK_TO_SETUP' };
+  | { type: 'BACK_TO_SETUP' }
+  | { type: 'PAUSE_BOTS' }
+  | { type: 'RESUME_BOTS' };
 
 export interface GameConfig {
   humanName: string;

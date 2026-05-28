@@ -240,23 +240,37 @@ function handleDrawWood(state: GameState, action: Extract<GameAction, { type: 'D
   const player = state.players.find(p => p.id === action.playerId);
   if (!player) return state;
 
+  // Current active cards slide into discard first
   let woodPile = [...player.woodPile];
   let woodDiscard = [...player.woodDiscard, ...player.woodActive];
 
-  // If wood pile empty, cycle discard back
-  if (woodPile.length === 0) {
-    if (woodDiscard.length === 0) return state;
-    woodPile = [...woodDiscard].reverse();
-    woodDiscard = [];
+  if (woodPile.length === 0 && woodDiscard.length === 0) return state;
+
+  const drawn: Card[] = [];
+
+  // Phase 1: take up to 3 from current deck (top = last element)
+  const fromCurrent = Math.min(3, woodPile.length);
+  if (fromCurrent > 0) {
+    drawn.push(...woodPile.slice(-fromCurrent));
+    woodPile = woodPile.slice(0, -fromCurrent);
   }
 
-  const drawCount = Math.min(3, woodPile.length);
-  const newActive = woodPile.slice(-drawCount);
-  const newWoodPile = woodPile.slice(0, -drawCount);
+  // Phase 2: if still need more and discard exists, flip discard into new deck
+  // and take the remainder — this lets a draw span the deck/discard boundary.
+  if (drawn.length < 3 && woodDiscard.length > 0) {
+    woodPile = [...woodDiscard].reverse();
+    woodDiscard = [];
+    const stillNeeded = 3 - drawn.length;
+    const fromNew = Math.min(stillNeeded, woodPile.length);
+    if (fromNew > 0) {
+      drawn.push(...woodPile.slice(-fromNew));
+      woodPile = woodPile.slice(0, -fromNew);
+    }
+  }
 
   return updatePlayer(state, action.playerId, {
-    woodPile: newWoodPile,
-    woodActive: newActive,
+    woodPile,
+    woodActive: drawn,
     woodDiscard,
   });
 }

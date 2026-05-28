@@ -511,6 +511,23 @@ io.on('connection', (socket: Socket) => {
     if (room.gameState.phase === 'playing') startBots(room);
   });
 
+  // ── Pause / resume bots ──────────────────────────────────────────────────
+  socket.on('pause_game', () => {
+    const code = socketToRoom.get(socket.id);
+    if (!code) return;
+    const room = rooms.get(code);
+    if (!room?.gameState || room.gameState.phase !== 'playing') return;
+    stopBots(room);
+  });
+
+  socket.on('resume_game', () => {
+    const code = socketToRoom.get(socket.id);
+    if (!code) return;
+    const room = rooms.get(code);
+    if (!room?.gameState || room.gameState.phase !== 'playing') return;
+    startBots(room);
+  });
+
   // ── Chat message ─────────────────────────────────────────────────────────
   socket.on('chat_message', ({ text }: { text: string }) => {
     const code = socketToRoom.get(socket.id);

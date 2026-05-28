@@ -316,7 +316,15 @@ export function GameBoard({ state, dispatch, myPlayerId }: Props) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div className="top-bar-target">→{state.targetScore}</div>
           {state.phase === 'playing' && showPause && (
-            <button className="pause-btn" onClick={() => setPaused(p => !p)}>
+            <button className="pause-btn" onClick={() => {
+              if (paused) {
+                setPaused(false);
+                dispatch({ type: 'RESUME_BOTS' });
+              } else {
+                setPaused(true);
+                dispatch({ type: 'PAUSE_BOTS' });
+              }
+            }}>
               {paused ? '▶' : '⏸'}
             </button>
           )}
@@ -396,7 +404,10 @@ export function GameBoard({ state, dispatch, myPlayerId }: Props) {
         <div className="pause-overlay">
           <div className="pause-dialog">
             <div className="pause-title">Paused</div>
-            <button className="pause-resume-btn" onClick={() => setPaused(false)}>
+            <button className="pause-resume-btn" onClick={() => {
+                setPaused(false);
+                dispatch({ type: 'RESUME_BOTS' });
+              }}>
               ▶ Resume
             </button>
           </div>

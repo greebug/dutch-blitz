@@ -196,6 +196,14 @@ export function useMultiplayer() {
       socketRef.current?.emit('next_round');
       return;
     }
+    if (action.type === 'PAUSE_BOTS') {
+      socketRef.current?.emit('pause_game');
+      return;
+    }
+    if (action.type === 'RESUME_BOTS') {
+      socketRef.current?.emit('resume_game');
+      return;
+    }
     socketRef.current?.emit('action', action);
   }, []);
 

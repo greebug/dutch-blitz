@@ -45,6 +45,7 @@ export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highli
     : null;
   const isBlitzDragging = dragSource?.kind === 'blitz';
   const totalWoodRemaining = player.woodPile.length + player.woodDiscard.length;
+  const deckCount = player.woodPile.length; // cards currently in the face-down deck
 
   return (
     <div className="player-strip">
@@ -184,14 +185,15 @@ export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highli
           >
             {totalWoodRemaining > 0 ? (
               <>
-                {totalWoodRemaining > 2 && (
+                {deckCount > 2 && (
                   <CardBack style={{ position: 'absolute', top: 0, left: 0, opacity: 0.45 }} />
                 )}
-                {totalWoodRemaining > 1 && (
+                {deckCount > 1 && (
                   <CardBack style={{ position: 'absolute', top: 0, left: 8, opacity: 0.7 }} />
                 )}
-                <CardBack style={{ position: 'absolute', top: 0, left: 16 }} />
-                <div className="blitz-count-badge" style={{ top: -8, right: 0 }}>{totalWoodRemaining}</div>
+                {/* Always show one card back; fade it when deck is empty but discard can be flipped */}
+                <CardBack style={{ position: 'absolute', top: 0, left: 16, opacity: deckCount > 0 ? 1 : 0.4 }} />
+                <div className="blitz-count-badge" style={{ top: -8, right: 0 }}>{deckCount}</div>
               </>
             ) : (
               <EmptySlot style={{ position: 'absolute', top: 0, left: 0, width: 'var(--card-w)', height: 'var(--card-h)', borderRadius: 9 }} label="—" />
