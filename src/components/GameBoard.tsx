@@ -183,18 +183,36 @@ export function GameBoard({ state, dispatch, myPlayerId }: Props) {
   }
 
   function getDropTarget(x: number, y: number): { pileId: string | null; postIndex: number | null; dutchSlotIndex: number | null } {
-    const elements = document.elementsFromPoint(x, y);
-    for (const el of elements) {
-      const htmlEl = el as HTMLElement;
-      const dutchPileId = htmlEl.dataset.dutchPileId;
-      if (dutchPileId) {
-        const slotStr = htmlEl.dataset.dutchSlotIndex;
-        const dutchSlotIndex = slotStr !== undefined ? parseInt(slotStr) : null;
-        return { pileId: dutchPileId, postIndex: null, dutchSlotIndex };
+    function checkAt(cx: number, cy: number) {
+      const elements = document.elementsFromPoint(cx, cy);
+      for (const el of elements) {
+        const htmlEl = el as HTMLElement;
+        const dutchPileId = htmlEl.dataset.dutchPileId;
+        if (dutchPileId) {
+          const slotStr = htmlEl.dataset.dutchSlotIndex;
+          const dutchSlotIndex = slotStr !== undefined ? parseInt(slotStr) : null;
+          return { pileId: dutchPileId, postIndex: null, dutchSlotIndex };
+        }
+        const postIdx = htmlEl.dataset.postPileIndex;
+        if (postIdx !== undefined) return { pileId: null, postIndex: parseInt(postIdx), dutchSlotIndex: null };
       }
-      const postIdx = htmlEl.dataset.postPileIndex;
-      if (postIdx !== undefined) return { pileId: null, postIndex: parseInt(postIdx), dutchSlotIndex: null };
+      return null;
     }
+
+    // Try exact point first, then check a small radius around it
+    const exact = checkAt(x, y);
+    if (exact) return exact;
+
+    const T = 22; // tolerance in px
+    const probes: [number, number][] = [
+      [x - T, y], [x + T, y], [x, y - T], [x, y + T],
+      [x - T, y - T], [x + T, y - T], [x - T, y + T], [x + T, y + T],
+    ];
+    for (const [px, py] of probes) {
+      const hit = checkAt(px, py);
+      if (hit) return hit;
+    }
+
     return { pileId: null, postIndex: null, dutchSlotIndex: null };
   }
 

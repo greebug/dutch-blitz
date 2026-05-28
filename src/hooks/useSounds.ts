@@ -13,24 +13,20 @@ function getCtx(): AudioContext {
   return audioCtx;
 }
 
-// Unlock the AudioContext so iOS Safari will let us play sound.
-// Called on every touch/click so that re-entering the app after backgrounding
-// also re-unlocks it (iOS suspends the context when the page goes invisible).
+// Unlock the AudioContext so iOS/Chrome will let us play sound.
+// The silent buffer MUST be started synchronously inside the user-gesture
+// call stack — putting it in a .then() breaks iOS Chrome's gesture gate.
 function unlockAudio() {
   try {
     const ctx = getCtx();
-    if (ctx.state !== 'running') {
-      ctx.resume().then(() => {
-        // Silent 1-sample buffer — older iOS needs actual audio output to unlock
-        try {
-          const buf = ctx.createBuffer(1, 1, 22050);
-          const src = ctx.createBufferSource();
-          src.buffer = buf;
-          src.connect(ctx.destination);
-          src.start(0);
-        } catch { /* ignore */ }
-      }).catch(() => {});
-    }
+    // Play a silent 1-sample buffer synchronously — this is what iOS/Chrome require
+    const buf = ctx.createBuffer(1, 1, 22050);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+    // Also resume if suspended (async is fine here since the buffer already started)
+    if (ctx.state !== 'running') ctx.resume().catch(() => {});
   } catch { /* ignore */ }
 }
 
@@ -157,17 +153,25 @@ function playBackgroundMusic(ctx: AudioContext): () => void {
 function playTone(freq: number, duration: number, type: OscillatorType = 'sine', gain = 0.3) {
   try {
     const ctx = getCtx();
-    if (ctx.state === 'suspended') ctx.resume();
-    const osc = ctx.createOscillator();
-    const gainNode = ctx.createGain();
-    osc.connect(gainNode);
-    gainNode.connect(ctx.destination);
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, ctx.currentTime);
-    gainNode.gain.setValueAtTime(gain, ctx.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-    osc.start();
-    osc.stop(ctx.currentTime + duration);
+    const doPlay = () => {
+      try {
+        const osc = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, ctx.currentTime);
+        gainNode.gain.setValueAtTime(gain, ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+        osc.start();
+        osc.stop(ctx.currentTime + duration);
+      } catch { /* ignore */ }
+    };
+    if (ctx.state === 'running') {
+      doPlay();
+    } else {
+      ctx.resume().then(doPlay).catch(() => {});
+    }
   } catch { /* ignore */ }
 }
 
