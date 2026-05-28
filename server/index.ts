@@ -227,6 +227,21 @@ const io = new Server(httpServer, {
 const rooms = new Map<string, Room>();
 const socketToRoom = new Map<string, string>();
 
+// ─── Health / diagnostics ─────────────────────────────────────────────────────
+
+app.get('/api/health', async (_req, res) => {
+  if (!pool) {
+    res.json({ db: false, message: 'No DATABASE_URL — stats disabled' });
+    return;
+  }
+  try {
+    await pool.query('SELECT 1');
+    res.json({ db: true, message: 'Database connected' });
+  } catch (e: any) {
+    res.json({ db: false, message: String(e.message) });
+  }
+});
+
 // ─── Leaderboard API ──────────────────────────────────────────────────────────
 
 app.get('/api/leaderboard', async (_req, res) => {
