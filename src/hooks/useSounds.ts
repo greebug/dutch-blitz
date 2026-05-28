@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 
 // webkitAudioContext is required on iOS < 14.5
 declare global { interface Window { webkitAudioContext?: typeof AudioContext; } }
@@ -38,6 +38,35 @@ if (typeof document !== 'undefined') {
   document.addEventListener('touchend',         unlockAudio, { passive: true, capture: true });
   document.addEventListener('click',            unlockAudio, { capture: true });
   document.addEventListener('visibilitychange', vis);
+}
+
+// ─── Module-level music control ───────────────────────────────────────────────
+// Exported so MultiLobbyScreen can call startMusic() from the "Start Game"
+// button gesture — the only truly reliable way to unlock audio on iPhone Safari.
+
+let _musicStop: (() => void) | null = null;
+
+export function startMusic() {
+  if (_musicStop) return; // already playing — guard against double-start
+  try {
+    const ctx = getCtx();
+    const doStart = () => {
+      if (_musicStop) return;
+      _musicStop = playBackgroundMusic(ctx);
+    };
+    if (ctx.state === 'running') {
+      doStart();
+    } else {
+      ctx.resume().then(doStart).catch(() => {});
+    }
+  } catch { /* ignore */ }
+}
+
+export function stopMusic() {
+  if (_musicStop) {
+    _musicStop();
+    _musicStop = null;
+  }
 }
 
 function scheduleNote(
@@ -186,32 +215,7 @@ function playTone(freq: number, duration: number, type: OscillatorType = 'sine',
 }
 
 export function useSounds() {
-  const musicStopRef = useRef<(() => void) | null>(null);
-
-  // Module-level listeners already handle touchstart/touchend/click/visibilitychange.
-  // Nothing extra to attach here — the useEffect is intentionally empty.
-
-  const startMusic = useCallback(() => {
-    try {
-      const ctx = getCtx();
-      const doStart = () => {
-        if (musicStopRef.current) musicStopRef.current();
-        musicStopRef.current = playBackgroundMusic(ctx);
-      };
-      if (ctx.state === 'running') {
-        doStart();
-      } else {
-        ctx.resume().then(doStart).catch(() => {});
-      }
-    } catch { /* ignore */ }
-  }, []);
-
-  const stopMusic = useCallback(() => {
-    if (musicStopRef.current) {
-      musicStopRef.current();
-      musicStopRef.current = null;
-    }
-  }, []);
+  // startMusic / stopMusic are module-level — stable references, no hook overhead
 
   const playCardSlap = useCallback(() => {
     playTone(220, 0.07, 'triangle', 0.35);

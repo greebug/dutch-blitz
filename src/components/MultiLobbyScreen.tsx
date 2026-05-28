@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { CardColor, BotDifficulty } from '../game/types';
 import { LobbyPlayer, LobbyState, RoomConfig, ChatMessage, AuthInfo } from '../hooks/useMultiplayer';
 import { Leaderboard } from './Leaderboard';
-import { unlockAudio } from '../hooks/useSounds';
+import { unlockAudio, startMusic } from '../hooks/useSounds';
 
 // ─── Faction config ───────────────────────────────────────────────────────────
 
@@ -916,7 +916,7 @@ export function MultiLobbyScreen({
                   All players must pick a faction to start
                 </div>
               )}
-              <button className="start-btn" onClick={() => { unlockAudio(); onStartGame(); }} disabled={!canStart}>
+              <button className="start-btn" onClick={() => { unlockAudio(); startMusic(); onStartGame(); }} disabled={!canStart}>
                 Start Game ▶
               </button>
             </>

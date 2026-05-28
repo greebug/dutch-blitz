@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { GameAction, GameState, CardSource, Card, PlayerState } from '../game/types';
 import { canPlayOnDutchPile, canPlayOnPostPile, canStartNewDutchPile } from '../game/rules';
 import { useGameLoop } from '../hooks/useGameLoop';
-import { useSounds } from '../hooks/useSounds';
+import { useSounds, startMusic, stopMusic } from '../hooks/useSounds';
 import { OpponentDisplay } from './OpponentRow';
 import { CenterPiles } from './CenterPiles';
 import { PlayerArea } from './PlayerArea';
@@ -54,7 +54,7 @@ export function GameBoard({ state, dispatch, myPlayerId }: Props) {
   const [paused, setPaused] = useState(false);
   const [flyCards, setFlyCards] = useState<FlyCard[]>([]);
 
-  const { playCardSlap, playDraw, playDutch, playError, startMusic, stopMusic } = useSounds();
+  const { playCardSlap, playDraw, playDutch, playError } = useSounds();
 
   // Bots always run server-side — keep local loop disabled
   useGameLoop(state, dispatch, true);
@@ -111,6 +111,9 @@ export function GameBoard({ state, dispatch, myPlayerId }: Props) {
       }
     }
   }, [state]);
+
+  // Stop music whenever this component unmounts (e.g. user leaves mid-game)
+  useEffect(() => { return () => stopMusic(); }, []);
 
   useEffect(() => {
     if (state.phase === 'playing' && state.roundNumber === 1) startMusic();
@@ -234,7 +237,7 @@ export function GameBoard({ state, dispatch, myPlayerId }: Props) {
     e.currentTarget.setPointerCapture(e.pointerId);
     const card = getHumanCard(source);
     if (!card || !human) return;
-    // Allow picking up any card — validation happens on drop
+    startMusic(); // gesture fallback for iOS joining players
     setDrag({ card, source, x: e.clientX, y: e.clientY });
     setShowNewPile(canStartNewDutchPile(card));
   }, [state, human]);
@@ -286,6 +289,7 @@ export function GameBoard({ state, dispatch, myPlayerId }: Props) {
 
   function handleDrawWood() {
     if (!human) return;
+    startMusic(); // gesture fallback for iOS joining players
     dispatch({ type: 'DRAW_WOOD', playerId: human.id });
     playDraw();
   }
