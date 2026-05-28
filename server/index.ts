@@ -15,6 +15,7 @@ import { Server, Socket } from 'socket.io';
 import path from 'path';
 import { Pool } from 'pg';
 import bcrypt from 'bcryptjs';
+import { randomUUID } from 'crypto';
 import { gameReducer } from '../src/game/engine';
 import { dealPlayer } from '../src/game/deck';
 import { getBotAction, getBotInterval } from '../src/game/bot';
@@ -49,6 +50,8 @@ interface Room {
   phase: 'lobby' | 'playing';
   botTimers: ReturnType<typeof setTimeout>[];
   statsSaved: boolean;
+  gameId: string;
+  lastSavedRound: number;
 }
 
 // ─── Database ─────────────────────────────────────────────────────────────────
@@ -72,6 +75,20 @@ async function initDb() {
       created_at    TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS round_records (
+      id            SERIAL PRIMARY KEY,
+      account_id    INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+      player_name   TEXT NOT NULL,
+      game_id       TEXT NOT NULL,
+      round_number  INTEGER NOT NULL,
+      cards_played  INTEGER NOT NULL,
+      duration_secs FLOAT NOT NULL,
+      secs_per_play FLOAT NOT NULL,
+      target_score  INTEGER NOT NULL,
+      played_at     TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
   console.log('Database ready');
 }
 initDb().catch(console.error);
@@ -79,22 +96,87 @@ initDb().catch(console.error);
 interface AccountInfo { id: number; displayName: string; }
 const socketToAccount = new Map<string, AccountInfo>();
 
+// Bot ELO ratings used in ELO calculations
+const BOT_ELO: Record<string, number> = { easy: 800, medium: 1200, hard: 1600, impossible: 2200 };
+
+async function saveRoundRecord(room: Room) {
+  if (!pool || !room.gameState?.lastRound) return;
+  const lr = room.gameState.lastRound;
+  if (room.lastSavedRound >= lr.roundNumber) return; // already saved
+  room.lastSavedRound = lr.roundNumber;
+
+  for (const player of room.players) {
+    const cards = lr.cardsPlayed[player.playerId] ?? 0;
+    if (cards < 3 || lr.duration <= 0) continue;
+    const secsPerPlay = lr.duration / cards;
+    const account = socketToAccount.get(player.socketId);
+    try {
+      await pool.query(
+        `INSERT INTO round_records
+           (account_id, player_name, game_id, round_number, cards_played, duration_secs, secs_per_play, target_score)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [account?.id ?? null, player.name, room.gameId, lr.roundNumber,
+         cards, lr.duration, secsPerPlay, room.config.targetScore]
+      );
+    } catch (e) { console.error('saveRoundRecord error:', e); }
+  }
+}
+
 async function saveGameStats(room: Room) {
   if (!pool || room.statsSaved || !room.gameState || room.gameState.phase !== 'gameEnd') return;
   room.statsSaved = true;
+
   const gs = room.gameState;
-  for (const player of room.players) {
-    const account = socketToAccount.get(player.socketId);
-    if (!account) continue;
+  const ranked = [...gs.players].sort((a, b) => b.totalScore - a.totalScore);
+
+  // Look up current ELO + games_played for all authenticated players in one query
+  const authPlayers = room.players
+    .map(p => ({ lp: p, account: socketToAccount.get(p.socketId) }))
+    .filter((x): x is { lp: LobbyPlayer; account: AccountInfo } => x.account !== undefined);
+
+  const accountIds = authPlayers.map(x => x.account.id);
+  const dbRows = accountIds.length > 0
+    ? (await pool.query('SELECT id, elo, games_played FROM accounts WHERE id = ANY($1)', [accountIds])).rows
+    : [];
+  const dbInfo = new Map<number, { elo: number; gamesPlayed: number }>(
+    dbRows.map(r => [r.id, { elo: parseInt(r.elo), gamesPlayed: parseInt(r.games_played) }])
+  );
+
+  for (const { lp: player, account } of authPlayers) {
     const isWinner = player.playerId === gs.gameWinnerId;
+    const rank = ranked.findIndex(p => p.id === player.playerId);
+    const result = rank === 0 ? 1 : rank === ranked.length - 1 ? 0 : 0.5;
+
+    // Average opponent ELO
+    const opponentElos = gs.players
+      .filter(p => p.id !== player.playerId)
+      .map(p => {
+        if (p.isBot) return BOT_ELO[p.botDifficulty ?? 'medium'] ?? 1200;
+        const oppLobby = room.players.find(rp => rp.playerId === p.id);
+        if (oppLobby) {
+          const oppAccount = socketToAccount.get(oppLobby.socketId);
+          if (oppAccount) return dbInfo.get(oppAccount.id)?.elo ?? 1200;
+        }
+        return 1200;
+      });
+    const avgOppElo = opponentElos.reduce((a, b) => a + b, 0) / (opponentElos.length || 1);
+
+    const info = dbInfo.get(account.id);
+    const currentElo = info?.elo ?? 1200;
+    const gamesPlayed = info?.gamesPlayed ?? 0;
+    const K = gamesPlayed < 30 ? 32 : 16;
+    const expected = 1 / (1 + Math.pow(10, (avgOppElo - currentElo) / 400));
+    const eloChange = Math.round(K * (result - expected));
+
     try {
       await pool.query(
         `UPDATE accounts
            SET games_played  = games_played  + 1,
                wins          = wins          + $1,
-               rounds_played = rounds_played + $2
-         WHERE id = $3`,
-        [isWinner ? 1 : 0, gs.roundNumber, account.id]
+               rounds_played = rounds_played + $2,
+               elo           = elo           + $3
+         WHERE id = $4`,
+        [isWinner ? 1 : 0, gs.roundNumber, eloChange, account.id]
       );
     } catch (e) { console.error('saveGameStats error:', e); }
   }
@@ -111,10 +193,53 @@ const io = new Server(httpServer, {
 const rooms = new Map<string, Room>();
 const socketToRoom = new Map<string, string>();
 
+// ─── Leaderboard API ──────────────────────────────────────────────────────────
+
+app.get('/api/leaderboard', async (_req, res) => {
+  if (!pool) {
+    res.json({ speed: [], avgSpeed: [], wins: [] });
+    return;
+  }
+  try {
+    const [speedRes, avgRes, winsRes] = await Promise.all([
+      // Tab 1: Best single-round speed (min 5 cards)
+      pool.query(`
+        SELECT player_name, secs_per_play, cards_played, played_at
+        FROM round_records
+        WHERE cards_played >= 5
+        ORDER BY secs_per_play ASC
+        LIMIT 3
+      `),
+      // Tab 2: Best average game speed (target >= 75)
+      pool.query(`
+        SELECT player_name,
+               SUM(duration_secs) / NULLIF(SUM(cards_played), 0) AS avg_secs,
+               SUM(cards_played) AS total_cards
+        FROM round_records
+        WHERE target_score >= 75 AND cards_played >= 5
+        GROUP BY player_name, game_id
+        ORDER BY avg_secs ASC
+        LIMIT 3
+      `),
+      // Tab 3: Total wins by PIN account
+      pool.query(`
+        SELECT display_name, wins, games_played
+        FROM accounts
+        WHERE wins > 0
+        ORDER BY wins DESC
+        LIMIT 3
+      `),
+    ]);
+    res.json({ speed: speedRes.rows, avgSpeed: avgRes.rows, wins: winsRes.rows });
+  } catch (e) {
+    console.error('leaderboard error:', e);
+    res.json({ speed: [], avgSpeed: [], wins: [] });
+  }
+});
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function generateCode(): string {
-  // Unambiguous characters (no 0/O/1/I)
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
   for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
@@ -133,7 +258,12 @@ function broadcastLobby(room: Room) {
 function broadcastState(room: Room) {
   if (room.gameState) {
     io.to(room.code).emit('game_state', { state: room.gameState });
-    if (room.gameState.phase === 'gameEnd') saveGameStats(room).catch(console.error);
+    if (room.gameState.phase === 'roundEnd' || room.gameState.phase === 'gameEnd') {
+      saveRoundRecord(room).catch(console.error);
+    }
+    if (room.gameState.phase === 'gameEnd') {
+      saveGameStats(room).catch(console.error);
+    }
   }
 }
 
@@ -185,7 +315,6 @@ function cleanupSocket(socketId: string) {
     return;
   }
 
-  // Transfer host if the host left
   if (leaving?.isHost) room.players[0].isHost = true;
 
   if (room.phase === 'lobby') {
@@ -218,6 +347,8 @@ io.on('connection', (socket: Socket) => {
       phase: 'lobby',
       botTimers: [],
       statsSaved: false,
+      gameId: randomUUID(),
+      lastSavedRound: 0,
     };
 
     rooms.set(code, room);
@@ -264,7 +395,6 @@ io.on('connection', (socket: Socket) => {
     if (!code) return;
     const room = rooms.get(code);
     if (!room || room.phase !== 'lobby') return;
-    // Check if taken by another player
     if (room.players.some(p => p.socketId !== socket.id && p.faction === faction)) {
       socket.emit('room_error', { message: 'That faction is already taken. Pick another.' });
       return;
@@ -282,7 +412,6 @@ io.on('connection', (socket: Socket) => {
     const room = rooms.get(code);
     if (!room) return;
     if (room.players.find(p => p.socketId === socket.id)?.isHost !== true) return;
-
     room.config = { ...room.config, ...config };
     broadcastLobby(room);
   });
@@ -295,19 +424,16 @@ io.on('connection', (socket: Socket) => {
     if (!room || room.phase !== 'lobby') return;
     if (room.players.find(p => p.socketId === socket.id)?.isHost !== true) return;
 
-    // Validate all human players have chosen a faction
     const unpicked = room.players.find(p => p.faction === null);
     if (unpicked) {
       socket.emit('room_error', { message: `${unpicked.name} hasn't picked a faction yet.` });
       return;
     }
 
-    // Build player list: human players first, then bots
     const humanPlayers: PlayerState[] = room.players.map(p =>
       dealPlayer(p.playerId, p.name, false, undefined, 0, p.faction!)
     );
 
-    // Bots auto-fill to reach 4 players; names & factions from unused slots
     const numBots = Math.max(0, 4 - room.players.length);
     const usedFactions = new Set(room.players.map(p => p.faction as CardColor));
     const availFactions: CardColor[] = (['red', 'blue', 'green', 'yellow'] as CardColor[])
@@ -326,18 +452,21 @@ io.on('connection', (socket: Socket) => {
 
     const allPlayers = [...humanPlayers, ...botPlayers];
 
-    // Build state now but don't broadcast yet — countdown first
+    // Reset per-game state
+    room.gameId = randomUUID();
+    room.lastSavedRound = 0;
+    room.statsSaved = false;
+
     room.gameState = {
       phase: 'playing',
       players: allPlayers,
       centerPiles: [],
       roundNumber: 1,
-      roundStartTime: 0,          // set correctly when game actually reveals
+      roundStartTime: 0,
       targetScore: room.config.targetScore,
     };
-    room.phase = 'playing';       // blocks new joins immediately
+    room.phase = 'playing';
 
-    // Countdown 3 → 2 → 1, then reveal
     io.to(code).emit('countdown', { count: 3 });
     setTimeout(() => io.to(code).emit('countdown', { count: 2 }), 1000);
     setTimeout(() => io.to(code).emit('countdown', { count: 1 }), 2000);
@@ -357,13 +486,11 @@ io.on('connection', (socket: Socket) => {
     const room = rooms.get(code);
     if (!room?.gameState || room.gameState.phase !== 'playing') return;
 
-    // Security: only the player who owns this action may dispatch it
     if ('playerId' in action && (action as any).playerId !== socket.id) return;
 
     const prevPhase = room.gameState.phase;
     room.gameState = gameReducer(room.gameState, action);
 
-    // If round just ended, stop bots
     if (room.gameState.phase !== 'playing' && prevPhase === 'playing') {
       stopBots(room);
     }
@@ -384,7 +511,7 @@ io.on('connection', (socket: Socket) => {
     if (room.gameState.phase === 'playing') startBots(room);
   });
 
-  // ── Chat message ────────────────────────────────────────────────────────
+  // ── Chat message ─────────────────────────────────────────────────────────
   socket.on('chat_message', ({ text }: { text: string }) => {
     const code = socketToRoom.get(socket.id);
     if (!code) return;
@@ -399,7 +526,7 @@ io.on('connection', (socket: Socket) => {
     io.to(code).emit('chat_update', {
       playerId: socket.id,
       name: player.name,
-      faction: player.faction,   // null until they pick one
+      faction: player.faction,
       text: trimmed,
       timestamp: Date.now(),
     });
@@ -411,10 +538,10 @@ io.on('connection', (socket: Socket) => {
     const nameLower = cleanName.toLowerCase();
 
     if (!pool) {
-      // No DB configured — treat as guest but still emit auth_ok so flow continues
       socket.emit('auth_ok', {
         displayName: cleanName,
-        stats: { wins: 0, gamesPlayed: 0, roundsPlayed: 0, elo: 1200 },
+        stats: { wins: 0, gamesPlayed: 0, roundsPlayed: 0, elo: 1200,
+                 bestRoundSpeed: null, avgGameSpeed: null },
       });
       return;
     }
@@ -432,7 +559,6 @@ io.on('connection', (socket: Socket) => {
       );
 
       if (rows.length > 0) {
-        // Existing account — verify PIN
         const row = rows[0];
         const match = await bcrypt.compare(pin, row.pin_hash);
         if (!match) {
@@ -440,17 +566,28 @@ io.on('connection', (socket: Socket) => {
           return;
         }
         socketToAccount.set(socket.id, { id: row.id, displayName: row.display_name });
+
+        // Fetch speed stats for this account
+        const speedRes = await pool.query(
+          `SELECT MIN(secs_per_play)                                       AS best_speed,
+                  SUM(duration_secs) / NULLIF(SUM(cards_played), 0)       AS avg_speed
+           FROM round_records WHERE account_id = $1 AND cards_played >= 5`,
+          [row.id]
+        );
+        const sr = speedRes.rows[0];
+
         socket.emit('auth_ok', {
           displayName: row.display_name,
           stats: {
-            wins: row.wins,
-            gamesPlayed: row.games_played,
-            roundsPlayed: row.rounds_played,
-            elo: row.elo,
+            wins:           row.wins,
+            gamesPlayed:    row.games_played,
+            roundsPlayed:   row.rounds_played,
+            elo:            row.elo,
+            bestRoundSpeed: sr?.best_speed  != null ? parseFloat(sr.best_speed)  : null,
+            avgGameSpeed:   sr?.avg_speed   != null ? parseFloat(sr.avg_speed)   : null,
           },
         });
       } else {
-        // New account — register
         const pinHash = await bcrypt.hash(pin, 10);
         const { rows: newRows } = await pool.query(
           `INSERT INTO accounts (name_lower, display_name, pin_hash)
@@ -460,7 +597,8 @@ io.on('connection', (socket: Socket) => {
         socketToAccount.set(socket.id, { id: newRows[0].id, displayName: cleanName });
         socket.emit('auth_ok', {
           displayName: cleanName,
-          stats: { wins: 0, gamesPlayed: 0, roundsPlayed: 0, elo: 1200 },
+          stats: { wins: 0, gamesPlayed: 0, roundsPlayed: 0, elo: 1200,
+                   bestRoundSpeed: null, avgGameSpeed: null },
         });
       }
     } catch (e: any) {
@@ -473,13 +611,13 @@ io.on('connection', (socket: Socket) => {
     }
   });
 
-  // ── Leave / back to lobby ────────────────────────────────────────────────
+  // ── Leave ─────────────────────────────────────────────────────────────────
   socket.on('leave', () => {
     cleanupSocket(socket.id);
     socket.emit('left_room');
   });
 
-  // ── Disconnect ───────────────────────────────────────────────────────────
+  // ── Disconnect ────────────────────────────────────────────────────────────
   socket.on('disconnect', () => {
     cleanupSocket(socket.id);
     console.log(`[-] ${socket.id}`);
@@ -500,5 +638,5 @@ if (process.env.NODE_ENV === 'production') {
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10);
 httpServer.listen(PORT, () => {
-  console.log(`\n🃏 Dutch Blitz game server running on port ${PORT}\n`);
+  console.log(`\n🃏 BingBongBlitz server running on port ${PORT}\n`);
 });

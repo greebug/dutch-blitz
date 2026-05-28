@@ -37,6 +37,8 @@ export interface AccountStats {
   gamesPlayed: number;
   roundsPlayed: number;
   elo: number;
+  bestRoundSpeed: number | null;
+  avgGameSpeed:   number | null;
 }
 
 export interface AuthInfo {

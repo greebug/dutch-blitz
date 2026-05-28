@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CardColor, BotDifficulty } from '../game/types';
 import { LobbyPlayer, LobbyState, RoomConfig, ChatMessage, AuthInfo } from '../hooks/useMultiplayer';
+import { Leaderboard } from './Leaderboard';
 
 // ─── Faction config ───────────────────────────────────────────────────────────
 
@@ -67,6 +68,10 @@ export function MultiLobbyScreen({
   const [botDifficulty, setBotDifficulty] = useState<BotDifficulty>('medium');
   const [chatInput, setChatInput] = useState('');
   const [showRules, setShowRules] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [profileName, setProfileName] = useState(() => localStorage.getItem('db-player-name') ?? '');
+  const [profilePin, setProfilePin] = useState('');
+  const [profileLookupPending, setProfileLookupPending] = useState(false);
   const chatListRef = useRef<HTMLDivElement>(null);
 
   // Pending action: fired after auth_ok comes back
@@ -98,8 +103,22 @@ export function MultiLobbyScreen({
     if (authError) {
       setPendingCreate(false);
       setPendingJoin(false);
+      setProfileLookupPending(false);
     }
   }, [authError]);
+
+  // When profile lookup auth comes back, clear the pending flag
+  useEffect(() => {
+    if (authInfo && profileLookupPending) {
+      setProfileLookupPending(false);
+    }
+  }, [authInfo, profileLookupPending]);
+
+  function handleProfileLookup() {
+    if (!profileName.trim() || profilePin.length !== 4) return;
+    setProfileLookupPending(true);
+    onAuthPlay(profileName.trim(), profilePin.trim());
+  }
 
   function handleSend() {
     if (!chatInput.trim()) return;
@@ -226,22 +245,205 @@ export function MultiLobbyScreen({
     </div>
   );
 
+  // ── Profile modal ────────────────────────────────────────────────────────
+  function fmtSpeed(v: number | null | undefined) {
+    return v != null ? v.toFixed(1) + 's/card' : '—';
+  }
+  function fmtPct(wins: number, games: number) {
+    if (games === 0) return '—';
+    return Math.round((wins / games) * 100) + '%';
+  }
+
+  const profileModal = showProfile && (
+    <div
+      onClick={() => setShowProfile(false)}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 999,
+        background: 'rgba(0,0,0,0.78)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.15)',
+          borderRadius: 16, padding: '24px 20px', maxWidth: 360, width: '100%',
+          maxHeight: '82vh', overflowY: 'auto', color: 'rgba(255,255,255,0.88)',
+          fontSize: 14, lineHeight: 1.6,
+        }}
+      >
+        <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 16, color: '#ffd54f' }}>
+          👤 Profile
+        </div>
+
+        {authInfo ? (
+          <>
+            <div style={{ marginBottom: 16, fontSize: 13, color: '#66bb6a' }}>
+              ✓ Signed in as <strong>{authInfo.displayName}</strong>
+            </div>
+
+            {/* ELO — big hero stat */}
+            <div style={{
+              background: 'rgba(249,168,37,0.1)', border: '1px solid rgba(249,168,37,0.3)',
+              borderRadius: 10, padding: '12px 16px', marginBottom: 14, textAlign: 'center',
+            }}>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 2 }}>ELO Rating</div>
+              <div style={{ fontSize: 32, fontWeight: 900, color: '#ffd54f' }}>{authInfo.stats.elo}</div>
+            </div>
+
+            {/* Stats grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+              {[
+                { label: 'Win Rate',     value: fmtPct(authInfo.stats.wins, authInfo.stats.gamesPlayed) },
+                { label: 'Games Played', value: String(authInfo.stats.gamesPlayed) },
+                { label: 'Wins',         value: String(authInfo.stats.wins) },
+                { label: 'Rounds',       value: String(authInfo.stats.roundsPlayed) },
+              ].map(({ label, value }) => (
+                <div key={label} style={{
+                  background: 'rgba(255,255,255,0.05)', borderRadius: 8,
+                  padding: '10px 12px',
+                }}>
+                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 2 }}>{label}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: 'rgba(255,255,255,0.9)' }}>{value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Speed stats */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Speed</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: '8px 12px' }}>
+                  <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13 }}>Best Round</span>
+                  <span style={{ fontWeight: 700, color: '#ffd54f' }}>{fmtSpeed(authInfo.stats.bestRoundSpeed)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: '8px 12px' }}>
+                  <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13 }}>Lifetime Avg</span>
+                  <span style={{ fontWeight: 700, color: '#ffd54f' }}>{fmtSpeed(authInfo.stats.avgGameSpeed)}</span>
+                </div>
+              </div>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 6 }}>
+                Lower is faster · rounds with ≥5 cards counted
+              </div>
+            </div>
+
+            <button
+              onClick={() => { setShowProfile(false); window.location.reload(); }}
+              style={{
+                width: '100%', padding: '9px', marginBottom: 8,
+                background: 'rgba(255,255,255,0.07)',
+                color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: 8, cursor: 'pointer', fontSize: 12,
+              }}
+            >
+              Sign Out
+            </button>
+          </>
+        ) : (
+          <>
+            <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, marginBottom: 16 }}>
+              Enter your name and PIN to view your stats.
+            </div>
+
+            {authError && (
+              <div style={{ background: 'rgba(239,83,80,0.15)', border: '1px solid rgba(239,83,80,0.4)', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 13, color: '#ef9a9a' }}>
+                {authError}
+              </div>
+            )}
+
+            <div className="setup-label">Name</div>
+            <input
+              className="setup-input"
+              value={profileName}
+              onChange={e => setProfileName(e.target.value)}
+              placeholder="Your player name"
+              maxLength={16}
+              style={{ marginBottom: 10 }}
+            />
+            <div className="setup-label">PIN</div>
+            <input
+              className="setup-input"
+              type="password"
+              inputMode="numeric"
+              value={profilePin}
+              onChange={e => setProfilePin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              placeholder="4-digit PIN"
+              maxLength={4}
+              style={{ marginBottom: 14 }}
+            />
+            <button
+              onClick={handleProfileLookup}
+              disabled={!profileName.trim() || profilePin.length !== 4 || profileLookupPending}
+              style={{
+                width: '100%', padding: '11px',
+                background: profileName.trim() && profilePin.length === 4 && !profileLookupPending
+                  ? '#f9a825' : 'rgba(255,255,255,0.12)',
+                color: profileName.trim() && profilePin.length === 4 && !profileLookupPending
+                  ? '#111' : 'rgba(255,255,255,0.35)',
+                border: 'none', borderRadius: 10,
+                fontWeight: 800, fontSize: 14, cursor: 'pointer',
+                marginBottom: 8,
+              }}
+            >
+              {profileLookupPending ? 'Looking up…' : 'View My Stats'}
+            </button>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', textAlign: 'center' }}>
+              Don't have a PIN yet? Enter one when you start a game to create an account.
+            </div>
+          </>
+        )}
+
+        <button
+          onClick={() => setShowProfile(false)}
+          style={{
+            width: '100%', padding: '10px', marginTop: 4,
+            background: '#f9a825', color: '#111',
+            border: 'none', borderRadius: 10,
+            fontWeight: 900, fontSize: 14, cursor: 'pointer',
+          }}
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  );
+
   // ── Idle phase ───────────────────────────────────────────────────────────
   if (phase === 'idle') {
     return (
       <div className="lobby-screen">
         {rulesModal}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div className="lobby-title" style={{ margin: 0 }}>BingBongBlitz</div>
+        {profileModal}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Profile button — left of title */}
+          <button
+            onClick={() => setShowProfile(true)}
+            title="Your profile"
+            style={{
+              width: 30, height: 30, borderRadius: '50%',
+              background: authInfo ? 'rgba(102,187,106,0.25)' : 'rgba(255,255,255,0.10)',
+              border: authInfo ? '1px solid rgba(102,187,106,0.5)' : '1px solid rgba(255,255,255,0.22)',
+              color: authInfo ? '#66bb6a' : 'rgba(255,255,255,0.65)',
+              fontSize: 15, cursor: 'pointer', flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            👤
+          </button>
+
+          <div className="lobby-title" style={{ margin: 0, flex: 1, textAlign: 'center' }}>BingBongBlitz</div>
+
+          {/* Rules button — right of title */}
           <button
             onClick={() => setShowRules(true)}
             title="How to play"
             style={{
-              width: 28, height: 28, borderRadius: '50%',
-              background: 'rgba(255,255,255,0.12)',
-              border: '1px solid rgba(255,255,255,0.25)',
-              color: 'rgba(255,255,255,0.7)', fontSize: 14, fontWeight: 700,
-              cursor: 'pointer', flexShrink: 0, lineHeight: 1,
+              width: 30, height: 30, borderRadius: '50%',
+              background: 'rgba(255,255,255,0.10)',
+              border: '1px solid rgba(255,255,255,0.22)',
+              color: 'rgba(255,255,255,0.65)', fontSize: 14, fontWeight: 700,
+              cursor: 'pointer', flexShrink: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
           >
@@ -381,6 +583,8 @@ export function MultiLobbyScreen({
             {isAuthenticating && pendingCreate ? 'Signing in…' : 'Create Game'}
           </button>
         </div>
+
+        <Leaderboard />
       </div>
     );
   }

@@ -1,9 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { PlayerState, CardSource } from '../game/types';
+import { CardColor, PlayerState, CardSource } from '../game/types';
 import { CardDisplay, CardBack, EmptySlot } from './DraggableCard';
 
 const SLIVER_PX = 12;
 const MAX_SLIVERS = 3;
+const CORNER_R = 9; // matches --radius on .card
+
+// Solid card colors — used to fill sliver strip backgrounds so they bleed
+// behind the card above and cover its transparent rounded-corner gaps.
+const CARD_BG: Record<CardColor, string> = {
+  red:    '#c62828',
+  blue:   '#1565c0',
+  green:  '#2e7d32',
+  yellow: '#f9a825',
+};
 
 interface Props {
   player: PlayerState;
@@ -73,6 +83,27 @@ export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highli
                       const isTop = renderIdx === cardsToRender.length - 1;
                       const yOffset = renderIdx * SLIVER_PX;
 
+                      if (!isTop) {
+                        // Coloured strip — extends CORNER_R px behind the card above so
+                        // it shows through that card's transparent rounded-corner gaps.
+                        return (
+                          <div
+                            key={card.id}
+                            style={{
+                              position: 'absolute',
+                              top: yOffset,
+                              left: 0,
+                              width: 'var(--card-w)',
+                              height: `${SLIVER_PX + CORNER_R}px`,
+                              background: CARD_BG[card.color],
+                              borderRadius: `${CORNER_R}px ${CORNER_R}px 0 0`,
+                              zIndex: renderIdx + 1,
+                              pointerEvents: 'none',
+                            }}
+                          />
+                        );
+                      }
+
                       return (
                         <div
                           key={card.id}
@@ -81,24 +112,17 @@ export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highli
                             top: yOffset,
                             left: 0,
                             width: 'var(--card-w)',
-                            // Non-top cards clipped to a thin sliver; top card shows fully
-                            height: isTop ? 'var(--card-h)' : `${SLIVER_PX}px`,
-                            overflow: 'hidden',
+                            height: 'var(--card-h)',
                             zIndex: renderIdx + 1,
                           }}
                           data-post-pile-index={String(pileIdx)}
                         >
                           <CardDisplay
                             card={card}
-                            dragging={isTop && isPostDragging}
-                            onPointerDown={
-                              isTop
-                                ? e => onDragStart(e, { kind: 'post', index: pileIdx as 0|1|2 })
-                                : undefined
-                            }
-                            className={isTop && isHighlighted ? 'drop-target-highlight' : ''}
+                            dragging={isPostDragging}
+                            onPointerDown={e => onDragStart(e, { kind: 'post', index: pileIdx as 0|1|2 })}
+                            className={isHighlighted ? 'drop-target-highlight' : ''}
                             data-post-pile-index={String(pileIdx)}
-                            style={{ pointerEvents: isTop ? undefined : 'none' }}
                           />
                         </div>
                       );
