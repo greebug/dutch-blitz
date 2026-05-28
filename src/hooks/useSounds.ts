@@ -33,7 +33,14 @@ export function unlockAudio() {
 // Attach listeners at MODULE LOAD so the context is unlocked the moment
 // the user first touches the page — even before GameBoard mounts.
 if (typeof document !== 'undefined') {
-  const vis = () => { if (document.visibilityState === 'visible') unlockAudio(); };
+  // visibilitychange is NOT a user gesture on iOS — only resume an existing
+  // context here, never create one. Creating outside a gesture can leave the
+  // context in a state that iPhone Safari refuses to ever resume.
+  const vis = () => {
+    if (document.visibilityState === 'visible' && audioCtx) {
+      if (audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
+    }
+  };
   document.addEventListener('touchstart',       unlockAudio, { passive: true, capture: true });
   document.addEventListener('touchend',         unlockAudio, { passive: true, capture: true });
   document.addEventListener('click',            unlockAudio, { capture: true });
@@ -50,15 +57,13 @@ export function startMusic() {
   if (_musicStop) return; // already playing — guard against double-start
   try {
     const ctx = getCtx();
-    const doStart = () => {
-      if (_musicStop) return;
-      _musicStop = playBackgroundMusic(ctx);
-    };
-    if (ctx.state === 'running') {
-      doStart();
-    } else {
-      ctx.resume().then(doStart).catch(() => {});
-    }
+    // Start music nodes SYNCHRONOUSLY so oscillators are created within the
+    // gesture callstack — iPhone Safari blocks audio nodes started in a
+    // .then() callback even if resume() was called in the gesture.
+    // ctx.currentTime is frozen while suspended, so all scheduled notes
+    // are still in the future and will play correctly once resume() runs.
+    _musicStop = playBackgroundMusic(ctx);
+    if (ctx.state !== 'running') ctx.resume().catch(() => {});
   } catch { /* ignore */ }
 }
 
