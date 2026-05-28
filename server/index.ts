@@ -122,6 +122,40 @@ async function saveRoundRecord(room: Room) {
   }
 }
 
+async function refreshPlayerStats(room: Room) {
+  if (!pool) return;
+  for (const player of room.players) {
+    const account = socketToAccount.get(player.socketId);
+    if (!account) continue;
+    try {
+      const { rows } = await pool.query(
+        `SELECT wins, games_played, rounds_played, elo FROM accounts WHERE id = $1`,
+        [account.id]
+      );
+      if (rows.length === 0) continue;
+      const row = rows[0];
+      const speedRes = await pool.query(
+        `SELECT MIN(secs_per_play)                                 AS best_speed,
+                SUM(duration_secs) / NULLIF(SUM(cards_played), 0) AS avg_speed
+         FROM round_records WHERE account_id = $1 AND cards_played >= 5`,
+        [account.id]
+      );
+      const sr = speedRes.rows[0];
+      io.to(player.socketId).emit('auth_ok', {
+        displayName: account.displayName,
+        stats: {
+          wins:           parseInt(row.wins),
+          gamesPlayed:    parseInt(row.games_played),
+          roundsPlayed:   parseInt(row.rounds_played),
+          elo:            parseInt(row.elo),
+          bestRoundSpeed: sr?.best_speed != null ? parseFloat(sr.best_speed) : null,
+          avgGameSpeed:   sr?.avg_speed  != null ? parseFloat(sr.avg_speed)  : null,
+        },
+      });
+    } catch (e) { console.error('refreshPlayerStats error:', e); }
+  }
+}
+
 async function saveGameStats(room: Room) {
   if (!pool || room.statsSaved || !room.gameState || room.gameState.phase !== 'gameEnd') return;
   room.statsSaved = true;
@@ -262,7 +296,9 @@ function broadcastState(room: Room) {
       saveRoundRecord(room).catch(console.error);
     }
     if (room.gameState.phase === 'gameEnd') {
-      saveGameStats(room).catch(console.error);
+      saveGameStats(room)
+        .then(() => refreshPlayerStats(room))
+        .catch(console.error);
     }
   }
 }
