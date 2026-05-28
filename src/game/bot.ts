@@ -82,9 +82,9 @@ export function getBotAction(state: GameState, botId: string): GameAction | null
 
 export function getBotInterval(difficulty: BotDifficulty): number {
   switch (difficulty) {
-    case 'easy':       return 7000 + Math.random() * 5000;  // 7–12s   (slow learner)
-    case 'medium':     return 2500 + Math.random() * 3000;  // 2.5–5.5s (casual)
-    case 'hard':       return 500  + Math.random() * 1000;  // 0.5–1.5s (competitive)
-    case 'impossible': return 300  + Math.random() * 400;   // 0.3–0.7s (very fast)
+    case 'easy':       return 11000 + Math.random() * 4000;  // 11–15s  (~13s avg)
+    case 'medium':     return 6000  + Math.random() * 2000;  // 6–8s    (~7s avg)
+    case 'hard':       return 3200  + Math.random() * 1000;  // 3.2–4.2s (~3.7s avg)
+    case 'impossible': return 1600  + Math.random() * 800;   // 1.6–2.4s (~2s avg)
   }
 }
