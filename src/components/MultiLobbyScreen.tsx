@@ -72,6 +72,12 @@ export function MultiLobbyScreen({
   const [profileName, setProfileName] = useState(() => localStorage.getItem('db-player-name') ?? '');
   const [profilePin, setProfilePin] = useState('');
   const [profileLookupPending, setProfileLookupPending] = useState(false);
+  // Auto-join modal (shown when arriving via invite link)
+  const [showAutoJoin, setShowAutoJoin] = useState(() => initialRoomCode.length > 0);
+  const [autoJoinName, setAutoJoinName] = useState(() => localStorage.getItem('db-player-name') ?? '');
+  const [autoJoinPin, setAutoJoinPin] = useState('');
+  // Copy-link feedback
+  const [copySuccess, setCopySuccess] = useState(false);
   const chatListRef = useRef<HTMLDivElement>(null);
 
   // Pending action: fired after auth_ok comes back
@@ -118,6 +124,39 @@ export function MultiLobbyScreen({
     if (!profileName.trim() || profilePin.length !== 4) return;
     setProfileLookupPending(true);
     onAuthPlay(profileName.trim(), profilePin.trim());
+  }
+
+  function handleAutoJoinSubmit() {
+    const n = authInfo ? authInfo.displayName : autoJoinName.trim();
+    if (!n) return;
+    setShowAutoJoin(false);
+    if (authInfo) {
+      onJoinRoom(initialRoomCode, authInfo.displayName);
+    } else if (autoJoinPin.length === 4) {
+      // Authenticate first — pending handler will use joinCode (= initialRoomCode)
+      setPendingJoin(true);
+      onAuthPlay(n, autoJoinPin.trim());
+    } else {
+      localStorage.setItem('db-player-name', n);
+      onJoinRoom(initialRoomCode, n);
+    }
+  }
+
+  function handleCopyLink(code: string) {
+    const url = `${window.location.origin}/?room=${code}`;
+    // Mobile: use native share sheet when available
+    if (navigator.share) {
+      navigator.share({ title: 'Join my BingBongBlitz game!', url }).catch(() => {});
+      return;
+    }
+    // Desktop: copy to clipboard
+    navigator.clipboard?.writeText(url).then(() => {
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2200);
+    }).catch(() => {
+      // Last resort: browser prompt
+      window.prompt('Copy this invite link:', url);
+    });
   }
 
   function handleSend() {
@@ -409,12 +448,117 @@ export function MultiLobbyScreen({
     </div>
   );
 
+  // ── Auto-join modal (invite link entry) ─────────────────────────────────
+  const autoJoinModal = showAutoJoin && initialRoomCode && phase === 'idle' && (
+    <div
+      onClick={() => setShowAutoJoin(false)}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.85)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.15)',
+          borderRadius: 16, padding: '28px 22px', maxWidth: 340, width: '100%',
+          color: 'rgba(255,255,255,0.88)', fontSize: 14, lineHeight: 1.6,
+        }}
+      >
+        <div style={{ fontSize: 22, fontWeight: 900, color: '#ffd54f', marginBottom: 6 }}>
+          🎮 You're invited!
+        </div>
+        <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', marginBottom: 20 }}>
+          Joining room{' '}
+          <span style={{ fontWeight: 900, letterSpacing: 3, color: 'rgba(255,255,255,0.9)' }}>
+            {initialRoomCode}
+          </span>
+        </div>
+
+        {authInfo ? (
+          /* Already signed in — just confirm */
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 13, color: '#66bb6a', marginBottom: 12 }}>
+              ✓ Playing as <strong>{authInfo.displayName}</strong>
+            </div>
+          </div>
+        ) : (
+          /* Need to collect name + optional PIN */
+          <>
+            {authError && (
+              <div style={{ background: 'rgba(239,83,80,0.15)', border: '1px solid rgba(239,83,80,0.4)', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 13, color: '#ef9a9a' }}>
+                {authError}
+              </div>
+            )}
+            <div className="setup-label">Your Name</div>
+            <input
+              className="setup-input"
+              value={autoJoinName}
+              onChange={e => setAutoJoinName(e.target.value)}
+              placeholder="Enter your name"
+              maxLength={16}
+              autoFocus
+              style={{ marginBottom: 10 }}
+            />
+            <div className="setup-label">
+              PIN{' '}
+              <span style={{ fontWeight: 400, opacity: 0.5 }}>
+                (4 digits, optional — saves stats)
+              </span>
+            </div>
+            <input
+              className="setup-input"
+              type="password"
+              inputMode="numeric"
+              value={autoJoinPin}
+              onChange={e => setAutoJoinPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              placeholder="Leave blank to play as guest"
+              maxLength={4}
+              style={{ marginBottom: 20 }}
+            />
+          </>
+        )}
+
+        <button
+          onClick={handleAutoJoinSubmit}
+          disabled={!authInfo && !autoJoinName.trim()}
+          style={{
+            width: '100%', padding: '13px',
+            background: (authInfo || autoJoinName.trim()) ? '#f9a825' : 'rgba(255,255,255,0.12)',
+            color: (authInfo || autoJoinName.trim()) ? '#111' : 'rgba(255,255,255,0.3)',
+            border: 'none', borderRadius: 10,
+            fontWeight: 900, fontSize: 16, cursor: 'pointer',
+            marginBottom: 10,
+          }}
+        >
+          Join Game ▶
+        </button>
+
+        <button
+          onClick={() => setShowAutoJoin(false)}
+          style={{
+            width: '100%', padding: '9px',
+            background: 'none',
+            color: 'rgba(255,255,255,0.35)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: 10, cursor: 'pointer', fontSize: 13,
+          }}
+        >
+          Set up my profile first
+        </button>
+      </div>
+    </div>
+  );
+
   // ── Idle phase ───────────────────────────────────────────────────────────
   if (phase === 'idle') {
     return (
       <div className="lobby-screen">
         {rulesModal}
         {profileModal}
+        {autoJoinModal}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {/* Profile button — left of title */}
           <button
@@ -601,11 +745,34 @@ export function MultiLobbyScreen({
 
     return (
       <div className="lobby-screen">
-        <div className="lobby-title">
-          Room: <span className="lobby-room-code">{lobbyState.code}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="lobby-title" style={{ margin: 0, flex: 1 }}>
+            Room: <span className="lobby-room-code">{lobbyState.code}</span>
+          </div>
+          <button
+            onClick={() => handleCopyLink(lobbyState.code)}
+            title="Copy invite link"
+            style={{
+              padding: '7px 14px',
+              borderRadius: 20,
+              border: copySuccess
+                ? '1px solid rgba(102,187,106,0.6)'
+                : '1px solid rgba(255,255,255,0.22)',
+              background: copySuccess
+                ? 'rgba(102,187,106,0.18)'
+                : 'rgba(255,255,255,0.10)',
+              color: copySuccess ? '#66bb6a' : 'rgba(255,255,255,0.8)',
+              fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.2s',
+              flexShrink: 0,
+            }}
+          >
+            {copySuccess ? '✓ Copied!' : '🔗 Invite'}
+          </button>
         </div>
         <div className="lobby-subtitle">
-          Share this code with friends — anyone can join at <strong>bingbongblitz.com</strong>
+          Tap <strong>Invite</strong> to share the link — friends go straight to the join screen
         </div>
 
         {error && (
