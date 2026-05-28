@@ -32,6 +32,18 @@ export interface ChatMessage {
   timestamp: number;
 }
 
+export interface AccountStats {
+  wins: number;
+  gamesPlayed: number;
+  roundsPlayed: number;
+  elo: number;
+}
+
+export interface AuthInfo {
+  displayName: string;
+  stats: AccountStats;
+}
+
 export type MultiPhase = 'idle' | 'lobby' | 'playing';
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -46,8 +58,9 @@ export function useMultiplayer() {
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [countdown, setCountdown] = useState<number | null>(null);
-  // Trigger re-renders when myPlayerId is set
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
+  const [authInfo, setAuthInfo] = useState<AuthInfo | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
     // Connect to the game server (proxied through Vite on the same host/port)
@@ -58,7 +71,6 @@ export function useMultiplayer() {
       myPlayerIdRef.current = playerId;
       setMyPlayerId(playerId);
       setPhase('lobby');
-      // Update URL so others can paste it
       window.history.replaceState({}, '', `/?room=${code}`);
     });
 
@@ -90,7 +102,7 @@ export function useMultiplayer() {
       setGameState(state);
       if (state.phase !== 'setup') {
         setPhase('playing');
-        setCountdown(null);   // game is live — dismiss countdown screen
+        setCountdown(null);
       }
     });
 
@@ -110,7 +122,17 @@ export function useMultiplayer() {
       setCountdown(null);
       myPlayerIdRef.current = null;
       setMyPlayerId(null);
+      // authInfo intentionally kept — user stays signed in across rooms
       window.history.replaceState({}, '', '/');
+    });
+
+    socket.on('auth_ok', ({ displayName, stats }: { displayName: string; stats: AccountStats }) => {
+      setAuthInfo({ displayName, stats });
+      setAuthError(null);
+    });
+
+    socket.on('auth_error', ({ message }: { message: string }) => {
+      setAuthError(message);
     });
 
     socket.on('disconnect', () => {
@@ -158,11 +180,13 @@ export function useMultiplayer() {
     socketRef.current?.emit('chat_message', { text: trimmed });
   }, []);
 
-  // This is passed as `dispatch` to GameBoard — intercepts lifecycle actions,
-  // sends everything else to the server.
+  const authPlay = useCallback((name: string, pin: string) => {
+    setAuthError(null);
+    socketRef.current?.emit('auth_play', { name: name.trim(), pin: pin.trim() });
+  }, []);
+
   const dispatch = useCallback((action: GameAction) => {
     if (action.type === 'BACK_TO_SETUP') {
-      // "Back to setup" in multiplayer = leave and return to home
       socketRef.current?.emit('leave');
       return;
     }
@@ -170,7 +194,6 @@ export function useMultiplayer() {
       socketRef.current?.emit('next_round');
       return;
     }
-    // All play actions (PLAY_TO_CENTER, PLAY_TO_POST, DRAW_WOOD) go to server
     socketRef.current?.emit('action', action);
   }, []);
 
@@ -182,6 +205,8 @@ export function useMultiplayer() {
     messages,
     countdown,
     error,
+    authInfo,
+    authError,
     initialRoomCode,
     createRoom,
     joinRoom,
@@ -190,7 +215,9 @@ export function useMultiplayer() {
     startGame,
     leaveRoom,
     sendMessage,
+    authPlay,
     dispatch,
     clearError: () => setError(null),
+    clearAuthError: () => setAuthError(null),
   };
 }

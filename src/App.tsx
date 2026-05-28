@@ -28,6 +28,8 @@ export default function App() {
       lobbyState={multi.lobbyState}
       myPlayerId={multi.myPlayerId}
       error={multi.error}
+      authInfo={multi.authInfo}
+      authError={multi.authError}
       initialRoomCode={multi.initialRoomCode}
       onCreateRoom={multi.createRoom}
       onJoinRoom={multi.joinRoom}
@@ -36,6 +38,8 @@ export default function App() {
       onStartGame={multi.startGame}
       onLeave={multi.leaveRoom}
       onClearError={multi.clearError}
+      onAuthPlay={multi.authPlay}
+      onClearAuthError={multi.clearAuthError}
       chatMessages={multi.messages}
       onSendMessage={multi.sendMessage}
     />

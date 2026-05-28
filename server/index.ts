@@ -13,6 +13,8 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import path from 'path';
+import { Pool } from 'pg';
+import bcrypt from 'bcryptjs';
 import { gameReducer } from '../src/game/engine';
 import { dealPlayer } from '../src/game/deck';
 import { getBotAction, getBotInterval } from '../src/game/bot';
@@ -46,6 +48,56 @@ interface Room {
   gameState: GameState | null;
   phase: 'lobby' | 'playing';
   botTimers: ReturnType<typeof setTimeout>[];
+  statsSaved: boolean;
+}
+
+// ─── Database ─────────────────────────────────────────────────────────────────
+
+const pool = process.env.DATABASE_URL
+  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
+  : null;
+
+async function initDb() {
+  if (!pool) { console.log('No DATABASE_URL — accounts/stats disabled'); return; }
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS accounts (
+      id            SERIAL PRIMARY KEY,
+      name_lower    TEXT UNIQUE NOT NULL,
+      display_name  TEXT NOT NULL,
+      pin_hash      TEXT NOT NULL,
+      wins          INTEGER DEFAULT 0,
+      games_played  INTEGER DEFAULT 0,
+      rounds_played INTEGER DEFAULT 0,
+      elo           INTEGER DEFAULT 1200,
+      created_at    TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  console.log('Database ready');
+}
+initDb().catch(console.error);
+
+interface AccountInfo { id: number; displayName: string; }
+const socketToAccount = new Map<string, AccountInfo>();
+
+async function saveGameStats(room: Room) {
+  if (!pool || room.statsSaved || !room.gameState || room.gameState.phase !== 'gameEnd') return;
+  room.statsSaved = true;
+  const gs = room.gameState;
+  for (const player of room.players) {
+    const account = socketToAccount.get(player.socketId);
+    if (!account) continue;
+    const isWinner = player.playerId === gs.gameWinnerId;
+    try {
+      await pool.query(
+        `UPDATE accounts
+           SET games_played  = games_played  + 1,
+               wins          = wins          + $1,
+               rounds_played = rounds_played + $2
+         WHERE id = $3`,
+        [isWinner ? 1 : 0, gs.roundNumber, account.id]
+      );
+    } catch (e) { console.error('saveGameStats error:', e); }
+  }
 }
 
 // ─── Server setup ─────────────────────────────────────────────────────────────
@@ -81,6 +133,7 @@ function broadcastLobby(room: Room) {
 function broadcastState(room: Room) {
   if (room.gameState) {
     io.to(room.code).emit('game_state', { state: room.gameState });
+    if (room.gameState.phase === 'gameEnd') saveGameStats(room).catch(console.error);
   }
 }
 
@@ -115,6 +168,7 @@ function startBots(room: Room) {
 }
 
 function cleanupSocket(socketId: string) {
+  socketToAccount.delete(socketId);
   const code = socketToRoom.get(socketId);
   if (!code) return;
   const room = rooms.get(code);
@@ -163,6 +217,7 @@ io.on('connection', (socket: Socket) => {
       gameState: null,
       phase: 'lobby',
       botTimers: [],
+      statsSaved: false,
     };
 
     rooms.set(code, room);
@@ -348,6 +403,74 @@ io.on('connection', (socket: Socket) => {
       text: trimmed,
       timestamp: Date.now(),
     });
+  });
+
+  // ── Auth (login or auto-register with PIN) ───────────────────────────────
+  socket.on('auth_play', async ({ name, pin }: { name: string; pin: string }) => {
+    const cleanName = name.trim();
+    const nameLower = cleanName.toLowerCase();
+
+    if (!pool) {
+      // No DB configured — treat as guest but still emit auth_ok so flow continues
+      socket.emit('auth_ok', {
+        displayName: cleanName,
+        stats: { wins: 0, gamesPlayed: 0, roundsPlayed: 0, elo: 1200 },
+      });
+      return;
+    }
+
+    if (!pin || !/^\d{4}$/.test(pin)) {
+      socket.emit('auth_error', { message: 'PIN must be exactly 4 digits.' });
+      return;
+    }
+
+    try {
+      const { rows } = await pool.query(
+        `SELECT id, display_name, pin_hash, wins, games_played, rounds_played, elo
+           FROM accounts WHERE name_lower = $1`,
+        [nameLower]
+      );
+
+      if (rows.length > 0) {
+        // Existing account — verify PIN
+        const row = rows[0];
+        const match = await bcrypt.compare(pin, row.pin_hash);
+        if (!match) {
+          socket.emit('auth_error', { message: 'Wrong PIN for that name. Try again.' });
+          return;
+        }
+        socketToAccount.set(socket.id, { id: row.id, displayName: row.display_name });
+        socket.emit('auth_ok', {
+          displayName: row.display_name,
+          stats: {
+            wins: row.wins,
+            gamesPlayed: row.games_played,
+            roundsPlayed: row.rounds_played,
+            elo: row.elo,
+          },
+        });
+      } else {
+        // New account — register
+        const pinHash = await bcrypt.hash(pin, 10);
+        const { rows: newRows } = await pool.query(
+          `INSERT INTO accounts (name_lower, display_name, pin_hash)
+             VALUES ($1, $2, $3) RETURNING id`,
+          [nameLower, cleanName, pinHash]
+        );
+        socketToAccount.set(socket.id, { id: newRows[0].id, displayName: cleanName });
+        socket.emit('auth_ok', {
+          displayName: cleanName,
+          stats: { wins: 0, gamesPlayed: 0, roundsPlayed: 0, elo: 1200 },
+        });
+      }
+    } catch (e: any) {
+      if (e.code === '23505') {
+        socket.emit('auth_error', { message: 'That name was just taken — try a slightly different one.' });
+      } else {
+        console.error('auth_play error:', e);
+        socket.emit('auth_error', { message: 'Something went wrong. Please try again.' });
+      }
+    }
   });
 
   // ── Leave / back to lobby ────────────────────────────────────────────────
