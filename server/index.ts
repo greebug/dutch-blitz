@@ -226,6 +226,9 @@ const io = new Server(httpServer, {
 
 const rooms = new Map<string, Room>();
 const socketToRoom = new Map<string, string>();
+// Pending cleanup timers — keyed by socket ID that disconnected.
+// Gives players 60 s to reconnect before their slot is released.
+const disconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 // ─── Health / diagnostics ─────────────────────────────────────────────────────
 
@@ -685,10 +688,53 @@ io.on('connection', (socket: Socket) => {
     socket.emit('left_room');
   });
 
+  // ── Rejoin (after phone lock / brief disconnect) ─────────────────────────
+  socket.on('rejoin_room', ({ code, playerId }: { code: string; playerId: string }) => {
+    const room = rooms.get(code.toUpperCase());
+    if (!room) {
+      socket.emit('room_error', { message: 'Room no longer exists.' });
+      return;
+    }
+    const player = room.players.find(p => p.playerId === playerId);
+    if (!player) {
+      socket.emit('room_error', { message: 'Your slot is no longer available.' });
+      return;
+    }
+
+    // Cancel the pending cleanup for the old socket
+    const oldSocketId = player.socketId;
+    const timer = disconnectTimers.get(oldSocketId);
+    if (timer) { clearTimeout(timer); disconnectTimers.delete(oldSocketId); }
+
+    // Re-map to new socket
+    socketToRoom.delete(oldSocketId);
+    socketToRoom.set(socket.id, room.code);
+    const account = socketToAccount.get(oldSocketId);
+    if (account) { socketToAccount.delete(oldSocketId); socketToAccount.set(socket.id, account); }
+    player.socketId = socket.id;
+    socket.join(room.code);
+
+    // Restore state
+    if (room.phase === 'lobby') {
+      socket.emit('room_joined', { playerId, code: room.code });
+      broadcastLobby(room);
+    } else if (room.gameState) {
+      socket.emit('room_joined', { playerId, code: room.code });
+      socket.emit('game_state', { state: room.gameState });
+    }
+    console.log(`${player.name} rejoined room ${room.code}`);
+  });
+
   // ── Disconnect ────────────────────────────────────────────────────────────
   socket.on('disconnect', () => {
-    cleanupSocket(socket.id);
-    console.log(`[-] ${socket.id}`);
+    // Grace period: hold the player slot for 60 s in case they reconnect
+    // (phone locked, brief network drop, etc.)
+    const timer = setTimeout(() => {
+      disconnectTimers.delete(socket.id);
+      cleanupSocket(socket.id);
+    }, 60_000);
+    disconnectTimers.set(socket.id, timer);
+    console.log(`[-] ${socket.id} (60 s grace)`);
   });
 });
 

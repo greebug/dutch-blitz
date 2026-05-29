@@ -53,6 +53,9 @@ export type MultiPhase = 'idle' | 'lobby' | 'playing';
 export function useMultiplayer() {
   const socketRef = useRef<Socket | null>(null);
   const myPlayerIdRef = useRef<string | null>(null);
+  // Persists room+playerId across reconnects so we can auto-rejoin
+  const sessionRef = useRef<{ roomCode: string; playerId: string } | null>(null);
+  const reconnectingRef = useRef(false);
 
   const [phase, setPhase] = useState<MultiPhase>('idle');
   const [lobbyState, setLobbyState] = useState<LobbyState | null>(null);
@@ -63,15 +66,35 @@ export function useMultiplayer() {
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
   const [authInfo, setAuthInfo] = useState<AuthInfo | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [reconnecting, setReconnecting] = useState(false);
+
+  const setRecon = (val: boolean) => {
+    reconnectingRef.current = val;
+    setReconnecting(val);
+  };
 
   useEffect(() => {
     // Connect to the game server (proxied through Vite on the same host/port)
-    const socket = io({ path: '/socket.io', transports: ['websocket', 'polling'] });
+    // reconnectionAttempts: after ~10 tries (~30 s) give up and show error
+    const socket = io({
+      path: '/socket.io',
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+    });
     socketRef.current = socket;
+
+    socket.on('connect', () => {
+      // On reconnect (session exists) try to reclaim the room slot
+      const session = sessionRef.current;
+      if (session) socket.emit('rejoin_room', session);
+    });
 
     socket.on('room_created', ({ code, playerId }: { code: string; playerId: string }) => {
       myPlayerIdRef.current = playerId;
       setMyPlayerId(playerId);
+      sessionRef.current = { roomCode: code, playerId };
       setPhase('lobby');
       window.history.replaceState({}, '', `/?room=${code}`);
     });
@@ -79,12 +102,28 @@ export function useMultiplayer() {
     socket.on('room_joined', ({ playerId, code }: { playerId: string; code: string }) => {
       myPlayerIdRef.current = playerId;
       setMyPlayerId(playerId);
+      sessionRef.current = { roomCode: code, playerId };
+      setRecon(false);
+      setError(null);
       setPhase('lobby');
       window.history.replaceState({}, '', `/?room=${code}`);
     });
 
     socket.on('room_error', ({ message }: { message: string }) => {
       setError(message);
+      if (reconnectingRef.current) {
+        // Rejoin failed (room gone / slot expired) — drop back to idle
+        setRecon(false);
+        sessionRef.current = null;
+        setPhase('idle');
+        setLobbyState(null);
+        setGameState(null);
+        setMessages([]);
+        setCountdown(null);
+        myPlayerIdRef.current = null;
+        setMyPlayerId(null);
+        window.history.replaceState({}, '', '/');
+      }
     });
 
     socket.on('lobby_update', (data: { code: string; players: LobbyPlayer[]; config: RoomConfig; hostId: string | null }) => {
@@ -102,6 +141,7 @@ export function useMultiplayer() {
 
     socket.on('game_state', ({ state }: { state: GameState }) => {
       setGameState(state);
+      setRecon(false);
       if (state.phase !== 'setup') {
         setPhase('playing');
         setCountdown(null);
@@ -117,6 +157,8 @@ export function useMultiplayer() {
     });
 
     socket.on('left_room', () => {
+      sessionRef.current = null; // deliberate leave — no auto-rejoin
+      setRecon(false);
       setPhase('idle');
       setLobbyState(null);
       setGameState(null);
@@ -138,6 +180,18 @@ export function useMultiplayer() {
     });
 
     socket.on('disconnect', () => {
+      if (sessionRef.current) {
+        // We're in a room — show reconnecting UI and let socket.io retry
+        setRecon(true);
+      } else {
+        setError('Connection lost. Please refresh.');
+      }
+    });
+
+    // All reconnect attempts exhausted (~30 s) — give up
+    socket.on('reconnect_failed', () => {
+      setRecon(false);
+      sessionRef.current = null;
       setError('Connection lost. Please refresh and rejoin.');
     });
 
@@ -215,6 +269,7 @@ export function useMultiplayer() {
     messages,
     countdown,
     error,
+    reconnecting,
     authInfo,
     authError,
     initialRoomCode,
