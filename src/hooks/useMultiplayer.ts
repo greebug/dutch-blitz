@@ -54,7 +54,7 @@ export function useMultiplayer() {
   const socketRef = useRef<Socket | null>(null);
   const myPlayerIdRef = useRef<string | null>(null);
   // Persists room+playerId across reconnects so we can auto-rejoin
-  const sessionRef = useRef<{ roomCode: string; playerId: string } | null>(null);
+  const sessionRef = useRef<{ code: string; playerId: string } | null>(null);
   const reconnectingRef = useRef(false);
 
   const [phase, setPhase] = useState<MultiPhase>('idle');
@@ -94,7 +94,7 @@ export function useMultiplayer() {
     socket.on('room_created', ({ code, playerId }: { code: string; playerId: string }) => {
       myPlayerIdRef.current = playerId;
       setMyPlayerId(playerId);
-      sessionRef.current = { roomCode: code, playerId };
+      sessionRef.current = { code, playerId };
       setPhase('lobby');
       window.history.replaceState({}, '', `/?room=${code}`);
     });
@@ -102,7 +102,7 @@ export function useMultiplayer() {
     socket.on('room_joined', ({ playerId, code }: { playerId: string; code: string }) => {
       myPlayerIdRef.current = playerId;
       setMyPlayerId(playerId);
-      sessionRef.current = { roomCode: code, playerId };
+      sessionRef.current = { code, playerId };
       setRecon(false);
       setError(null);
       setPhase('lobby');

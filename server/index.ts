@@ -690,6 +690,7 @@ io.on('connection', (socket: Socket) => {
 
   // ── Rejoin (after phone lock / brief disconnect) ─────────────────────────
   socket.on('rejoin_room', ({ code, playerId }: { code: string; playerId: string }) => {
+    if (!code || !playerId) return; // guard against malformed payload
     const room = rooms.get(code.toUpperCase());
     if (!room) {
       socket.emit('room_error', { message: 'Room no longer exists.' });
