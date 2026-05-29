@@ -26,7 +26,10 @@ export function GameOverScreen({ state, dispatch, myPlayerId }: Props) {
   if (!lastRound) return null;
 
   const isGameOver = phase === 'gameEnd';
-  const winnerPlayer = players.find(p => p.id === lastRound.winnerId);
+  // roundWinner = who blitzed (emptied their pile to end this round)
+  // gameWinnerPlayer = who actually won the game (reached the target score)
+  const roundWinner = players.find(p => p.id === lastRound.winnerId);
+  const gameWinnerPlayer = players.find(p => p.id === gameWinnerId);
 
   // Sort players by total score desc
   const ranked = [...players].sort((a, b) => b.totalScore - a.totalScore);
@@ -50,7 +53,7 @@ export function GameOverScreen({ state, dispatch, myPlayerId }: Props) {
     <div className="gameover-screen">
       <div className="gameover-headline">
         {isGameOver
-          ? gameWinnerId === human.id ? '🏆 You Win!' : `${winnerPlayer?.name ?? 'Bot'} Wins!`
+          ? gameWinnerId === human.id ? '🏆 You Win!' : `${gameWinnerPlayer?.name ?? 'Someone'} Wins!`
           : 'Nice play!'}
       </div>
       <div className="gameover-round">
@@ -71,7 +74,7 @@ export function GameOverScreen({ state, dispatch, myPlayerId }: Props) {
         </thead>
         <tbody>
           {ranked.map((p, i) => {
-            const isWinner = p.id === lastRound.winnerId;
+            const isWinner = p.id === roundWinner?.id;
             const cards = lastRound.cardsPlayed[p.id] ?? 0;
             const blitz = lastRound.blitzRemaining[p.id] ?? 0;
             const roundScore = lastRound.roundScores[p.id] ?? 0;

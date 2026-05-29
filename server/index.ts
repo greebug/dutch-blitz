@@ -250,11 +250,11 @@ app.get('/api/health', async (_req, res) => {
 
 app.get('/api/leaderboard', async (_req, res) => {
   if (!pool) {
-    res.json({ speed: [], avgSpeed: [], wins: [] });
+    res.json({ speed: [], avgSpeed: [], wins: [], elo: [] });
     return;
   }
   try {
-    const [speedRes, avgRes, winsRes] = await Promise.all([
+    const [speedRes, avgRes, winsRes, eloRes] = await Promise.all([
       // Tab 1: Best single-round speed (min 5 cards)
       pool.query(`
         SELECT player_name, secs_per_play, cards_played, played_at
@@ -282,8 +282,16 @@ app.get('/api/leaderboard', async (_req, res) => {
         ORDER BY wins DESC
         LIMIT 3
       `),
+      // Tab 4: Top ELO ratings (min 3 games to qualify)
+      pool.query(`
+        SELECT display_name, elo, games_played, wins
+        FROM accounts
+        WHERE games_played >= 3
+        ORDER BY elo DESC
+        LIMIT 10
+      `),
     ]);
-    res.json({ speed: speedRes.rows, avgSpeed: avgRes.rows, wins: winsRes.rows });
+    res.json({ speed: speedRes.rows, avgSpeed: avgRes.rows, wins: winsRes.rows, elo: eloRes.rows });
   } catch (e) {
     console.error('leaderboard error:', e);
     res.json({ speed: [], avgSpeed: [], wins: [] });

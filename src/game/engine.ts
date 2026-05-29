@@ -242,7 +242,9 @@ function handlePlayToPost(state: GameState, action: Extract<GameAction, { type: 
   newPost[postIndex] = [card, ...newPost[postIndex]];
   updatedPlayer.postPiles = newPost;
 
-  return updatePlayer(state, playerId, updatedPlayer);
+  // checkRoundEnd is needed here: a blitz card moved to a post pile can
+  // empty the blitz pile, which should end the round immediately.
+  return checkRoundEnd(updatePlayer(state, playerId, updatedPlayer));
 }
 
 function handleDrawWood(state: GameState, action: Extract<GameAction, { type: 'DRAW_WOOD' }>): GameState {

@@ -9,8 +9,8 @@ import { unlockAudio, startMusic } from '../hooks/useSounds';
 const FACTIONS: { color: CardColor; label: string; symbol: string; bg: string; text: string }[] = [
   { color: 'red',    label: 'Carriage', symbol: '🚗', bg: '#c62828', text: 'white' },
   { color: 'blue',   label: 'Plow',     symbol: '🚜', bg: '#1565c0', text: 'white' },
-  { color: 'green',  label: 'Pump',     symbol: '⛽', bg: '#2e7d32', text: 'white' },
-  { color: 'yellow', label: 'Pail',     symbol: '🪣', bg: '#f9a825', text: '#111'  },
+  { color: 'green',  label: 'Pump',     symbol: '⛽', bg: '#43a047', text: 'white' },
+  { color: 'yellow', label: 'Pail',     symbol: '🪣', bg: '#b07b00', text: 'white' },
 ];
 
 const FACTION_CHAT_COLORS: Record<CardColor, string> = {
@@ -580,7 +580,11 @@ export function MultiLobbyScreen({
             👤
           </button>
 
-          <div className="lobby-title" style={{ margin: 0, flex: 1, textAlign: 'center' }}>BingBongBlitz</div>
+          <div
+            className="lobby-title"
+            style={{ margin: 0, flex: 1, textAlign: 'center', cursor: 'pointer' }}
+            onClick={() => { window.history.pushState({}, '', '/'); window.location.href = '/'; }}
+          >BingBongBlitz</div>
 
           {/* Rules button — right of title */}
           <button

@@ -3,11 +3,13 @@ import React, { useEffect, useState } from 'react';
 interface SpeedEntry   { player_name: string; secs_per_play: number; cards_played: number; }
 interface AvgEntry     { player_name: string; avg_secs: number; total_cards: number; }
 interface WinsEntry    { display_name: string; wins: number; games_played: number; }
+interface EloEntry     { display_name: string; elo: number; games_played: number; wins: number; }
 
 interface LeaderboardData {
   speed:    SpeedEntry[];
   avgSpeed: AvgEntry[];
   wins:     WinsEntry[];
+  elo:      EloEntry[];
 }
 
 const MEDALS = ['🥇', '🥈', '🥉'];
@@ -18,7 +20,7 @@ function fmt(secs: number) {
 
 export function Leaderboard() {
   const [data, setData] = useState<LeaderboardData | null>(null);
-  const [tab, setTab] = useState<'speed' | 'avgSpeed' | 'wins'>('speed');
+  const [tab, setTab] = useState<'speed' | 'avgSpeed' | 'wins' | 'elo'>('speed');
 
   useEffect(() => {
     fetch('/api/leaderboard')
@@ -42,7 +44,7 @@ export function Leaderboard() {
     marginBottom: 12,
   };
 
-  function tabBtn(id: typeof tab, label: string) {
+  function tabBtn(id: 'speed' | 'avgSpeed' | 'wins' | 'elo', label: string) {
     const active = tab === id;
     return (
       <button
@@ -93,6 +95,7 @@ export function Leaderboard() {
         {tabBtn('speed',    'Best Round')}
         {tabBtn('avgSpeed', 'Avg Speed')}
         {tabBtn('wins',     'Most Wins')}
+        {tabBtn('elo',      'ELO')}
       </div>
 
       {!data && (
@@ -156,9 +159,29 @@ export function Leaderboard() {
           Average over a full game (75+ pt target) · lower is faster
         </div>
       )}
+      {data && tab === 'elo' && (
+        !data.elo || data.elo.length === 0 ? empty :
+        data.elo.map((e, i) => (
+          <div key={i} style={rowStyle(i)}>
+            <span style={{ fontSize: 18, width: 24 }}>{MEDALS[i] ?? `${i + 1}.`}</span>
+            <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,0.88)' }}>
+              {e.display_name}
+            </span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#ffd54f' }}>
+              {e.elo}
+            </span>
+          </div>
+        ))
+      )}
+
       {tab === 'wins' && data && data.wins.length > 0 && (
         <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 8 }}>
           Tracked by PIN account · guest wins not counted
+        </div>
+      )}
+      {tab === 'elo' && data && data.elo && data.elo.length > 0 && (
+        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 8 }}>
+          ELO rating · PIN accounts with ≥3 games
         </div>
       )}
     </div>
