@@ -52,6 +52,7 @@ interface Room {
   statsSaved: boolean;
   gameId: string;
   lastSavedRound: number;
+  countingDown: boolean;
 }
 
 // ─── Database ─────────────────────────────────────────────────────────────────
@@ -403,6 +404,7 @@ io.on('connection', (socket: Socket) => {
       statsSaved: false,
       gameId: randomUUID(),
       lastSavedRound: 0,
+      countingDown: false,
     };
 
     rooms.set(code, room);
@@ -559,10 +561,21 @@ io.on('connection', (socket: Socket) => {
     const room = rooms.get(code);
     if (!room?.gameState) return;
     if (room.gameState.phase !== 'roundEnd' && room.gameState.phase !== 'gameEnd') return;
+    if (room.countingDown) return; // debounce — ignore while countdown is already running
+    room.countingDown = true;
 
-    room.gameState = gameReducer(room.gameState, { type: 'NEXT_ROUND' });
-    broadcastState(room);
-    if (room.gameState.phase === 'playing') startBots(room);
+    io.to(code).emit('countdown', { count: 3 });
+    setTimeout(() => io.to(code).emit('countdown', { count: 2 }), 1000);
+    setTimeout(() => io.to(code).emit('countdown', { count: 1 }), 2000);
+    setTimeout(() => {
+      room.countingDown = false;
+      if (!room.gameState) return;
+      if (room.gameState.phase !== 'roundEnd' && room.gameState.phase !== 'gameEnd') return;
+      room.gameState = gameReducer(room.gameState, { type: 'NEXT_ROUND' });
+      if (room.gameState.roundStartTime === 0) room.gameState.roundStartTime = Date.now();
+      broadcastState(room);
+      if (room.gameState.phase === 'playing') startBots(room);
+    }, 3000);
   });
 
   // ── Pause / resume bots ──────────────────────────────────────────────────

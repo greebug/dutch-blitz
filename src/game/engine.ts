@@ -158,7 +158,17 @@ function handlePlayToCenter(state: GameState, action: Extract<GameAction, { type
 
   if (targetPile) {
     if (!canPlayOnDutchPile(card, targetPile)) return state;
-    newPiles = newPiles.map(p => p.id === pileId ? { ...p, topValue: p.topValue + 1 } : p);
+    const newTopValue = targetPile.topValue + 1;
+    newPiles = newPiles.map(p => {
+      if (p.id !== pileId) return p;
+      const updated = { ...p, topValue: newTopValue };
+      if (newTopValue === 10) {
+        // Record who completed this pile (card owner's faction)
+        const placer = state.players.find(pl => pl.id === card.ownerId);
+        if (placer?.faction) updated.completedByFaction = placer.faction;
+      }
+      return updated;
+    });
   } else {
     // Starting a new pile
     if (!canStartNewDutchPile(card)) return state;
@@ -277,7 +287,7 @@ function handleDrawWood(state: GameState, action: Extract<GameAction, { type: 'D
 
 function handleNextRound(state: GameState): GameState {
   const newPlayers = state.players.map(p =>
-    dealPlayer(p.id, p.name, p.isBot, p.botDifficulty, p.totalScore)
+    dealPlayer(p.id, p.name, p.isBot, p.botDifficulty, p.totalScore, p.faction)
   );
   return {
     ...state,

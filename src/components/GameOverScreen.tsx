@@ -63,13 +63,17 @@ export function GameOverScreen({ state, dispatch, myPlayerId }: Props) {
           <tr>
             <th>#</th>
             <th style={{ textAlign: 'left' }}></th>
-            <th>This Round</th>
-            <th>Total</th>
+            <th title="Cards played to center">+Cards</th>
+            <th title="Blitz pile remaining × 2">−Blitz</th>
+            <th title="Net round score">Round</th>
+            <th title="Cumulative total">Total</th>
           </tr>
         </thead>
         <tbody>
           {ranked.map((p, i) => {
             const isWinner = p.id === lastRound.winnerId;
+            const cards = lastRound.cardsPlayed[p.id] ?? 0;
+            const blitz = lastRound.blitzRemaining[p.id] ?? 0;
             const roundScore = lastRound.roundScores[p.id] ?? 0;
             return (
               <tr key={p.id} className={`score-row ${p.id === human?.id ? 'winner-row' : ''}`}>
@@ -77,6 +81,10 @@ export function GameOverScreen({ state, dispatch, myPlayerId }: Props) {
                 <td className="name-cell">
                   {isWinner && <span style={{ marginRight: 4 }}>⚡</span>}
                   {p.name}
+                </td>
+                <td style={{ color: '#a5d6a7', textAlign: 'center' }}>+{cards}</td>
+                <td style={{ color: blitz > 0 ? '#ef9a9a' : 'rgba(255,255,255,0.4)', textAlign: 'center' }}>
+                  {blitz > 0 ? `−${blitz * 2}` : '0'}
                 </td>
                 <td className="round-score-cell">
                   <span style={{ color: roundScore >= 0 ? 'inherit' : '#ef9a9a' }}>{roundScore}</span>

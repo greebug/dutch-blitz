@@ -1,5 +1,5 @@
 import React from 'react';
-import { DutchPile } from '../game/types';
+import { CardColor, DutchPile } from '../game/types';
 
 interface Props {
   piles: DutchPile[];
@@ -9,10 +9,14 @@ interface Props {
 }
 
 const COLOR_BG: Record<string, string> = {
-  red: '#c62828', blue: '#1565c0', green: '#2e7d32', yellow: '#f9a825',
+  red: '#c62828', blue: '#1565c0', green: '#43a047', yellow: '#b07b00',
 };
 const COLOR_TEXT: Record<string, string> = {
-  red: 'white', blue: 'white', green: 'white', yellow: '#111',
+  red: 'white', blue: 'white', green: 'white', yellow: 'white',
+};
+
+const FACTION_EMOJI: Record<CardColor, string> = {
+  red: '🚗', blue: '🚜', green: '⛽', yellow: '🪣',
 };
 
 const TOTAL_SLOTS = 16;
@@ -33,6 +37,33 @@ export function CenterPiles({ piles, highlightPileId, showNewPileTarget, highlig
         {slots.map((pile, slotIdx) => {
           if (pile) {
             const isHighlighted = highlightPileId === pile.id;
+            const borderColor = isHighlighted ? 'white' : 'rgba(255,255,255,0.25)';
+
+            // Completed pile (topValue === 10): white card flipped upside-down showing
+            // the faction emoji of the player who placed the final card — just like
+            // the real Dutch Blitz rules.
+            if (pile.completedByFaction) {
+              return (
+                <div
+                  key={`${pile.id}-${pile.topValue}`}
+                  className={`dutch-slot occupied ${isHighlighted ? 'dutch-slot-highlight' : ''}`}
+                  style={{
+                    background: 'white',
+                    color: '#1a1a1a',
+                    borderColor,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  data-dutch-pile-id={pile.id}
+                >
+                  <span style={{ fontSize: 20, transform: 'rotate(180deg)', display: 'inline-block', lineHeight: 1 }}>
+                    {FACTION_EMOJI[pile.completedByFaction]}
+                  </span>
+                </div>
+              );
+            }
+
             return (
               // key includes topValue — remounts on each card played, triggering cardPop
               <div
@@ -41,7 +72,7 @@ export function CenterPiles({ piles, highlightPileId, showNewPileTarget, highlig
                 style={{
                   background: COLOR_BG[pile.color],
                   color: COLOR_TEXT[pile.color],
-                  borderColor: isHighlighted ? 'white' : 'rgba(255,255,255,0.25)',
+                  borderColor,
                 }}
                 data-dutch-pile-id={pile.id}
               >

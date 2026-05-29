@@ -7,8 +7,8 @@
   --felt-light: #245228;
   --card-red:    #c62828;
   --card-blue:   #1565c0;
-  --card-green:  #2e7d32;
-  --card-yellow: #f9a825;
+  --card-green:  #43a047;
+  --card-yellow: #b07b00;
   --card-back-top: #37474f;
   --card-back-btm: #263238;
   --text-white: #f5f5f5;
@@ -214,7 +214,7 @@ html, body, #root {
 .opp-mini-card.card-red    { background: var(--card-red);    color: white; }
 .opp-mini-card.card-blue   { background: var(--card-blue);   color: white; }
 .opp-mini-card.card-green  { background: var(--card-green);  color: white; }
-.opp-mini-card.card-yellow { background: var(--card-yellow); color: var(--text-dark); }
+.opp-mini-card.card-yellow { background: var(--card-yellow); color: white; }
 .opp-mini-card.mini-back {
   background: linear-gradient(145deg, var(--card-back-top), var(--card-back-btm));
   border-color: rgba(255,255,255,0.15);
@@ -454,7 +454,7 @@ html, body, #root {
 .card-red    { background: var(--card-red);    color: white; }
 .card-blue   { background: var(--card-blue);   color: white; }
 .card-green  { background: var(--card-green);  color: white; }
-.card-yellow { background: var(--card-yellow); color: var(--text-dark); }
+.card-yellow { background: var(--card-yellow); color: white; }
 .card-back {
   background:
     repeating-linear-gradient(

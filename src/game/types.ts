@@ -13,6 +13,7 @@ export interface DutchPile {
   color: CardColor;
   topValue: number;
   slot: number;  // visual grid position (0–15)
+  completedByFaction?: CardColor; // set when topValue reaches 10
 }
 
 export interface PlayerState {
