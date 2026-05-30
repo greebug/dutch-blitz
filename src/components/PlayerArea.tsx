@@ -16,8 +16,8 @@ const CARD_BG: Record<CardColor, string> = {
 };
 
 // ── Feature flag ──────────────────────────────────────────────────────────────
-// Set to false to revert to the old "all cards appear at once" behaviour.
-const WOOD_DEAL_ANIMATION = true;
+// Set to true to re-enable the 3-card deal sequence animation.
+const WOOD_DEAL_ANIMATION = false;
 
 interface Props {
   player: PlayerState;
