@@ -550,7 +550,10 @@ io.on('connection', (socket: Socket) => {
     const room = rooms.get(code);
     if (!room?.gameState || room.gameState.phase !== 'playing') return;
 
-    if ('playerId' in action && (action as any).playerId !== socket.id) return;
+    // After a reconnect socket.id changes, so compare against the room's stored
+    // playerId (which is stable across reconnects) rather than socket.id directly.
+    const actingPlayer = room.players.find(p => p.socketId === socket.id);
+    if ('playerId' in action && (action as any).playerId !== actingPlayer?.playerId) return;
 
     const prevPhase = room.gameState.phase;
     room.gameState = gameReducer(room.gameState, action);

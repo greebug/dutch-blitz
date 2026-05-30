@@ -61,9 +61,9 @@ export function GameBoard({ state, dispatch, myPlayerId }: Props) {
   // Bots always run server-side — keep local loop disabled
   useGameLoop(state, dispatch, true);
 
-  // ── Bot fly animations (state-diff approach) ──────────────────────────────
-  // Compare previous state to detect when a bot just played a card to center.
-  // This works whether bots are local or server-side.
+  // ── Opponent fly animations (state-diff approach) ────────────────────────
+  // Compare previous state to detect when any opponent (bot or human) just
+  // played a card to center. The local player uses the drag visual instead.
   const prevStateRef = useRef<GameState>(state);
   useEffect(() => {
     const prev = prevStateRef.current;
@@ -78,9 +78,10 @@ export function GameBoard({ state, dispatch, myPlayerId }: Props) {
     });
     if (!changedPile) return;
 
-    // Find which bot lost a visible card (they played it)
+    // Find which opponent lost a visible card (they played it).
+    // Skip the local player — their drag animation already handles the visual.
     for (const player of state.players) {
-      if (!player.isBot) continue;
+      if (player.id === myPlayerId) continue;
       const prevPlayer = prev.players.find(p => p.id === player.id);
       if (!prevPlayer) continue;
 

@@ -249,9 +249,8 @@ export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highli
                   style={{ position: 'absolute', top: 0, left: 0 }}
                   onPointerDown={e => onDragStart(e, { kind: 'wood' })}
                 />
-                {player.woodActive.length > 1 && (
-                  <div className="pile-count-badge">{player.woodActive.length}</div>
-                )}
+                {/* Always show badge so count is visible even with 1 card */}
+                <div className="pile-count-badge">{player.woodActive.length}</div>
               </>
             ) : (
               <EmptySlot style={{ opacity: 0.3, width: 'var(--card-w)', height: 'var(--card-h)', borderRadius: 9 }} label="—" />
