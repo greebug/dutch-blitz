@@ -28,19 +28,32 @@ interface Props {
 }
 
 export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highlightPostIndex }: Props) {
-  // Deal animation: step 0 = idle, 1–3 = card N arriving face-down
+  // Deal animation: step 0 = idle, 1–2 = card N flashing face-up
   const [dealStep, setDealStep] = useState(0);
   const prevWoodLenRef = useRef(player.woodActive.length);
+  // Track the top card's ID so we can detect a full 3→3 replacement (new cards drawn
+  // when active pile was already full — count stays 3 but content changes entirely).
+  const prevTopCardIdRef = useRef<string | null>(
+    player.woodActive.length > 0 ? player.woodActive[player.woodActive.length - 1].id : null
+  );
   const dealTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
-    const prev = prevWoodLenRef.current;
-    const curr = player.woodActive.length;
-    prevWoodLenRef.current = curr;
+    const curr  = player.woodActive.length;
+    const prev  = prevWoodLenRef.current;
+    const currTopId = curr > 0 ? player.woodActive[curr - 1].id : null;
+    const prevTopId = prevTopCardIdRef.current;
 
-    // Only animate when new cards are ADDED (draw). curr < prev means a card
-    // was played from the active pile — no animation in that case.
-    if (!WOOD_DEAL_ANIMATION || curr === 0 || curr <= prev) return;
+    prevWoodLenRef.current  = curr;
+    prevTopCardIdRef.current = currTopId;
+
+    if (!WOOD_DEAL_ANIMATION || curr === 0) return;
+    if (curr < prev) return; // card was played — never animate
+
+    // Animate when: count increased (drew to empty/partial pile)
+    // OR count stayed same but top card changed (drew with full pile: discard 3, draw 3 new)
+    const isDraw = curr > prev || (curr === prev && currTopId !== prevTopId);
+    if (!isDraw) return;
 
     dealTimers.current.forEach(clearTimeout);
     dealTimers.current = [];
@@ -48,11 +61,13 @@ export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highli
     const steps = Math.min(curr, 3);
     setDealStep(1);
     if (steps >= 2) dealTimers.current.push(setTimeout(() => setDealStep(2), 80));
-    // Step 0 = normal render, which already shows the final top card face-up
+    // Step 0 = normal render — top card stays visible as the final state
     dealTimers.current.push(setTimeout(() => setDealStep(0), 160));
 
     return () => { dealTimers.current.forEach(clearTimeout); };
-  }, [player.woodActive.length]);
+  // Depend on the array object (not just .length) so 3→3 replacements are detected
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [player.woodActive]);
 
   const blitzTop = player.blitzPile[0] ?? null;
   const woodTop = player.woodActive.length > 0
@@ -206,17 +221,17 @@ export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highli
           >
             {totalWoodRemaining > 0 ? (
               <>
-                {/* Fan depth reflects total cards remaining (deck + discard) */}
-                {totalWoodRemaining > 2 && (
+                {/* Fan depth shows current face-down deck depth */}
+                {deckCount > 2 && (
                   <CardBack style={{ position: 'absolute', top: 0, left: 0, opacity: 0.45 }} />
                 )}
-                {totalWoodRemaining > 1 && (
+                {deckCount > 1 && (
                   <CardBack style={{ position: 'absolute', top: 0, left: 8, opacity: 0.7 }} />
                 )}
-                {/* Top card back: full opacity if deck has cards, faded if only discard remains */}
+                {/* Faded when deck empty but discard can still be flipped */}
                 <CardBack style={{ position: 'absolute', top: 0, left: 16, opacity: deckCount > 0 ? 1 : 0.4 }} />
-                {/* Badge shows total wood remaining (deck + discard) */}
-                <div className="blitz-count-badge" style={{ top: -8, right: 0 }}>{totalWoodRemaining}</div>
+                {/* Badge shows face-down deck count → decreases by exactly 3 on each draw */}
+                <div className="blitz-count-badge" style={{ top: -8, right: 0 }}>{deckCount}</div>
               </>
             ) : (
               <EmptySlot style={{ position: 'absolute', top: 0, left: 0, width: 'var(--card-w)', height: 'var(--card-h)', borderRadius: 9 }} label="—" />
