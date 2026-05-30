@@ -44,6 +44,10 @@ function getBotSlots(bots: PlayerState[]): {
 
 export function GameBoard({ state, dispatch, myPlayerId }: Props) {
   const [drag, setDrag] = useState<DragState | null>(null);
+  // Optimistic-hide: card at this source is hidden immediately after dispatch while
+  // awaiting server confirmation — eliminates the visible "snap back" on drops.
+  const [pendingPlay, setPendingPlay] = useState<{ source: CardSource; cardId: string } | null>(null);
+  const pendingPlayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [highlightPileId, setHighlightPileId] = useState<string | null>(null);
   const [highlightPostIndex, setHighlightPostIndex] = useState<number | null>(null);
   const [highlightDutchSlotIndex, setHighlightDutchSlotIndex] = useState<number | null>(null);
@@ -114,6 +118,23 @@ export function GameBoard({ state, dispatch, myPlayerId }: Props) {
       }
     }
   }, [state]);
+
+  // Clear optimistic-hide once the server confirms the card left its source.
+  // Reference state.players directly (human isn't declared yet at this hook position).
+  useEffect(() => {
+    if (!pendingPlay) return;
+    const me = myPlayerId ? state.players.find(p => p.id === myPlayerId) : state.players.find(p => !p.isBot);
+    if (!me) return;
+    const { source, cardId } = pendingPlay;
+    let currentTopId: string | null = null;
+    if (source.kind === 'blitz')     currentTopId = me.blitzPile[0]?.id ?? null;
+    else if (source.kind === 'post') currentTopId = me.postPiles[source.index][0]?.id ?? null;
+    else /* wood */                  currentTopId = me.woodActive.length > 0 ? me.woodActive[me.woodActive.length - 1].id : null;
+    if (currentTopId !== cardId) {
+      setPendingPlay(null);
+      if (pendingPlayTimer.current) { clearTimeout(pendingPlayTimer.current); pendingPlayTimer.current = null; }
+    }
+  }, [state, pendingPlay, myPlayerId]);
 
   // Stop music whenever this component unmounts (e.g. user leaves mid-game)
   useEffect(() => { return () => stopMusic(); }, []);
@@ -281,7 +302,6 @@ export function GameBoard({ state, dispatch, myPlayerId }: Props) {
         });
         playCardSlap();
         // Optimistic DUTCH! — fire immediately instead of waiting for server round-trip.
-        // Conditions: valid center play, from blitz pile, last card in pile.
         if (drag.source.kind === 'blitz' && human.blitzPile.length === 1) {
           didOptimisticDutch.current = true;
           playDutch();
@@ -292,6 +312,11 @@ export function GameBoard({ state, dispatch, myPlayerId }: Props) {
         dispatch({ type: 'PLAY_TO_POST', playerId: human.id, source: drag.source, postIndex: postIndex as 0|1|2 });
         playCardSlap();
       }
+      // Immediately hide the source card so there's no snap-back while awaiting server.
+      // A safety timeout clears it if server is unexpectedly slow.
+      if (pendingPlayTimer.current) clearTimeout(pendingPlayTimer.current);
+      setPendingPlay({ source: drag.source, cardId: drag.card.id });
+      pendingPlayTimer.current = setTimeout(() => setPendingPlay(null), 800);
     } else if (pileId !== null || postIndex !== null) {
       playError();
     }
@@ -384,6 +409,7 @@ export function GameBoard({ state, dispatch, myPlayerId }: Props) {
           onDrawWood={handleDrawWood}
           dragSource={drag?.source ?? null}
           highlightPostIndex={highlightPostIndex}
+          pendingPlay={pendingPlay}
         />
       )}
 

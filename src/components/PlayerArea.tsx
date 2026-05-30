@@ -25,9 +25,12 @@ interface Props {
   onDrawWood: () => void;
   dragSource: CardSource | null;
   highlightPostIndex: number | null;
+  // When set, the top card of this source is hidden immediately after a local
+  // dispatch while we wait for the server to confirm — eliminates snap-back.
+  pendingPlay?: { source: CardSource; cardId: string } | null;
 }
 
-export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highlightPostIndex }: Props) {
+export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highlightPostIndex, pendingPlay }: Props) {
   // Deal animation: step 0 = idle, 1–2 = card N flashing face-up
   const [dealStep, setDealStep] = useState(0);
   const prevWoodLenRef = useRef(player.woodActive.length);
@@ -60,9 +63,9 @@ export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highli
 
     const steps = Math.min(curr, 3);
     setDealStep(1);
-    if (steps >= 2) dealTimers.current.push(setTimeout(() => setDealStep(2), 80));
+    if (steps >= 2) dealTimers.current.push(setTimeout(() => setDealStep(2), 120));
     // Step 0 = normal render — top card stays visible as the final state
-    dealTimers.current.push(setTimeout(() => setDealStep(0), 160));
+    dealTimers.current.push(setTimeout(() => setDealStep(0), 240));
 
     return () => { dealTimers.current.forEach(clearTimeout); };
   // Depend on the array object (not just .length) so 3→3 replacements are detected
@@ -82,6 +85,11 @@ export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highli
   const dealCard = WOOD_DEAL_ANIMATION && dealStep > 0
     ? (player.woodActive[Math.min(dealStep - 1, player.woodActive.length - 1)] ?? null)
     : null;
+
+  // Optimistic-hide flags: top card of each source is rendered opacity-0 immediately
+  // after dispatch so there's no snap-back while waiting for server confirmation.
+  const pendingIsBlitz = !!(pendingPlay?.source.kind === 'blitz' && pendingPlay.cardId === blitzTop?.id);
+  const pendingIsWood  = !!(pendingPlay?.source.kind === 'wood'  && pendingPlay.cardId === woodTop?.id);
 
   return (
     <div className="player-strip">
@@ -141,6 +149,11 @@ export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highli
                         );
                       }
 
+                      const pendingIsThisPost = (() => {
+                        if (!pendingPlay) return false;
+                        const src = pendingPlay.source;
+                        return src.kind === 'post' && src.index === pileIdx && pendingPlay.cardId === pile[0]?.id;
+                      })();
                       return (
                         <div
                           key={card.id}
@@ -157,6 +170,7 @@ export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highli
                           <CardDisplay
                             card={card}
                             dragging={isPostDragging}
+                            style={pendingIsThisPost ? { opacity: 0 } : undefined}
                             onPointerDown={e => onDragStart(e, { kind: 'post', index: pileIdx as 0|1|2 })}
                             className={isHighlighted ? 'drop-target-highlight' : ''}
                             data-post-pile-index={String(pileIdx)}
@@ -189,7 +203,7 @@ export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highli
                 <CardDisplay
                   card={blitzTop}
                   dragging={isBlitzDragging}
-                  style={{ position: 'absolute', top: 0, left: 0 }}
+                  style={{ position: 'absolute', top: 0, left: 0, opacity: pendingIsBlitz ? 0 : undefined }}
                   onPointerDown={e => onDragStart(e, { kind: 'blitz' })}
                 />
                 <div className="blitz-count-badge">{player.blitzPile.length}</div>
@@ -244,15 +258,14 @@ export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highli
           <span className="section-label">Active</span>
           <div style={{ position: 'relative', width: 'var(--card-w)', height: 'var(--card-h)' }}>
             {dealCard ? (
-              // Deal animation: flash each drawn card face-up for 80 ms before
-              // settling on the final top card in the normal render below.
-              // dealStep 1 → bottom card (woodActive[0])
-              // dealStep 2 → middle card (woodActive[1])
-              // dealStep 0 → normal render (top card, woodActive[last])
-              <CardDisplay
-                card={dealCard}
-                style={{ position: 'absolute', top: 0, left: 0 }}
-              />
+              // Deal animation: flash each drawn card face-up before the final top card
+              // dealStep 1 → bottom card (woodActive[0]), badge shows 1
+              // dealStep 2 → middle card (woodActive[1]), badge shows 2
+              // dealStep 0 → normal render (top card), badge shows actual length
+              <>
+                <CardDisplay card={dealCard} style={{ position: 'absolute', top: 0, left: 0 }} />
+                <div className="pile-count-badge">{dealStep}</div>
+              </>
             ) : woodTop ? (
               <>
                 {player.woodActive.length > 1 && (
@@ -261,10 +274,9 @@ export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highli
                 <CardDisplay
                   card={woodTop}
                   dragging={dragSource?.kind === 'wood'}
-                  style={{ position: 'absolute', top: 0, left: 0 }}
+                  style={{ position: 'absolute', top: 0, left: 0, opacity: pendingIsWood ? 0 : undefined }}
                   onPointerDown={e => onDragStart(e, { kind: 'wood' })}
                 />
-                {/* Always show badge so count is visible even with 1 card */}
                 <div className="pile-count-badge">{player.woodActive.length}</div>
               </>
             ) : (
