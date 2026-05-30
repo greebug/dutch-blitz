@@ -38,7 +38,9 @@ export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highli
     const curr = player.woodActive.length;
     prevWoodLenRef.current = curr;
 
-    if (!WOOD_DEAL_ANIMATION || curr === 0 || curr === prev) return;
+    // Only animate when new cards are ADDED (draw). curr < prev means a card
+    // was played from the active pile — no animation in that case.
+    if (!WOOD_DEAL_ANIMATION || curr === 0 || curr <= prev) return;
 
     dealTimers.current.forEach(clearTimeout);
     dealTimers.current = [];
@@ -46,8 +48,8 @@ export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highli
     const steps = Math.min(curr, 3);
     setDealStep(1);
     if (steps >= 2) dealTimers.current.push(setTimeout(() => setDealStep(2), 80));
-    if (steps >= 3) dealTimers.current.push(setTimeout(() => setDealStep(3), 160));
-    dealTimers.current.push(setTimeout(() => setDealStep(0), 280));
+    // Step 0 = normal render, which already shows the final top card face-up
+    dealTimers.current.push(setTimeout(() => setDealStep(0), 160));
 
     return () => { dealTimers.current.forEach(clearTimeout); };
   }, [player.woodActive.length]);
@@ -59,6 +61,12 @@ export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highli
   const isBlitzDragging = dragSource?.kind === 'blitz';
   const totalWoodRemaining = player.woodPile.length + player.woodDiscard.length;
   const deckCount = player.woodPile.length; // cards currently in the face-down deck
+
+  // During deal animation: reveal woodActive cards from bottom (index 0) to top.
+  // dealStep 1 → woodActive[0], dealStep 2 → woodActive[1]; step 0 = normal.
+  const dealCard = WOOD_DEAL_ANIMATION && dealStep > 0
+    ? (player.woodActive[Math.min(dealStep - 1, player.woodActive.length - 1)] ?? null)
+    : null;
 
   return (
     <div className="player-strip">
@@ -220,14 +228,16 @@ export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highli
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
           <span className="section-label">Active</span>
           <div style={{ position: 'relative', width: 'var(--card-w)', height: 'var(--card-h)' }}>
-            {WOOD_DEAL_ANIMATION && dealStep > 0 ? (
-              // Deal animation: show face-down cards arriving one at a time
-              // (dealStep 1 = first card, 2 = second, 3 = third/final)
-              <>
-                {dealStep >= 3 && <CardBack style={{ position: 'absolute', top: -4, left: -3, opacity: 0.4 }} />}
-                {dealStep >= 2 && <CardBack style={{ position: 'absolute', top: -2, left: -1, opacity: 0.65 }} />}
-                <CardBack style={{ position: 'absolute', top: 0, left: 0 }} />
-              </>
+            {dealCard ? (
+              // Deal animation: flash each drawn card face-up for 80 ms before
+              // settling on the final top card in the normal render below.
+              // dealStep 1 → bottom card (woodActive[0])
+              // dealStep 2 → middle card (woodActive[1])
+              // dealStep 0 → normal render (top card, woodActive[last])
+              <CardDisplay
+                card={dealCard}
+                style={{ position: 'absolute', top: 0, left: 0 }}
+              />
             ) : woodTop ? (
               <>
                 {player.woodActive.length > 1 && (
