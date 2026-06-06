@@ -766,6 +766,18 @@ io.on('connection', (socket: Socket) => {
 // ─── Static files (production) ────────────────────────────────────────────────
 
 if (process.env.NODE_ENV === 'production') {
+  // Blueberry Trio — a self-contained, client-side puzzle app served as static
+  // files under /trio. It never touches socket.io, the game loop, or Postgres, so
+  // it adds no load to the card game beyond serving its (browser-cached) bundle.
+  // These routes MUST come before the card game's catch-all below.
+  const trioPath = path.join(process.cwd(), 'trio');
+  app.use('/trio', express.static(trioPath)); // serves /trio/ + /trio/assets/*
+  app.get('/trio', (_req, res) => res.redirect('/trio/')); // bare path -> add slash
+  app.get('/trio/{*splat}', (_req, res) => { // SPA fallback for deep paths
+    res.sendFile(path.join(trioPath, 'index.html'));
+  });
+
+  // Card game (existing): static assets + SPA catch-all for everything else.
   const distPath = path.join(process.cwd(), 'dist');
   app.use(express.static(distPath));
   app.get('/{*splat}', (_req, res) => {
