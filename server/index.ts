@@ -90,6 +90,19 @@ async function initDb() {
       played_at     TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  // Blueberry Trio — community-published puzzles.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS trio_puzzles (
+      id          SERIAL PRIMARY KEY,
+      name        TEXT NOT NULL,
+      author      TEXT NOT NULL,
+      difficulty  INTEGER NOT NULL,
+      clues       JSONB NOT NULL,
+      solution    JSONB,
+      source      TEXT NOT NULL DEFAULT 'set',
+      created_at  TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
   console.log('Database ready');
 }
 initDb().catch(console.error);
@@ -220,9 +233,53 @@ async function saveGameStats(room: Room) {
 // ─── Server setup ─────────────────────────────────────────────────────────────
 
 const app = express();
+app.use(express.json({ limit: '128kb' })); // for the Trio puzzle API (game uses sockets)
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: { origin: '*' },
+});
+
+// ─── Blueberry Trio: community puzzle API ───────────────────────────────────────
+// Open publishing (no auth) — the client validates uniqueness before posting; the
+// server does basic shape validation and stores. `source` is 'set' (hand-crafted)
+// or 'build' (constraint-generated), used to bucket puzzles in the Play catalog.
+app.post('/trio/api/puzzles', async (req, res) => {
+  if (!pool) { res.status(503).json({ error: 'database unavailable' }); return; }
+  try {
+    const { name, author, difficulty, clues, solution, source } = req.body ?? {};
+    if (typeof author !== 'string' || !author.trim()) { res.status(400).json({ error: 'author required' }); return; }
+    if (!Array.isArray(clues) || clues.length === 0 || clues.length > 81) { res.status(400).json({ error: 'invalid clues' }); return; }
+    for (const c of clues) {
+      if (typeof c?.r !== 'number' || typeof c?.c !== 'number' || typeof c?.v !== 'number' ||
+          c.r < 1 || c.r > 9 || c.c < 1 || c.c > 9 || c.v < 0 || c.v > 8) {
+        res.status(400).json({ error: 'invalid clue' }); return;
+      }
+    }
+    const src = source === 'build' ? 'build' : 'set';
+    const nm = (typeof name === 'string' && name.trim()) ? name.trim().slice(0, 60) : 'Untitled';
+    const diff = Number.isInteger(difficulty) && difficulty >= 1 && difficulty <= 5 ? difficulty : 3;
+    const r = await pool.query(
+      `INSERT INTO trio_puzzles (name, author, difficulty, clues, solution, source)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, created_at`,
+      [nm, author.trim().slice(0, 40), diff, JSON.stringify(clues), solution ? JSON.stringify(solution) : null, src]
+    );
+    res.json({ id: r.rows[0].id, created_at: r.rows[0].created_at });
+  } catch (e: any) {
+    res.status(500).json({ error: String(e.message) });
+  }
+});
+
+app.get('/trio/api/puzzles', async (_req, res) => {
+  if (!pool) { res.json([]); return; }
+  try {
+    const r = await pool.query(
+      `SELECT id, name, author, difficulty, clues, solution, source, created_at
+       FROM trio_puzzles ORDER BY created_at DESC LIMIT 500`
+    );
+    res.json(r.rows);
+  } catch (e: any) {
+    res.status(500).json({ error: String(e.message) });
+  }
 });
 
 const rooms = new Map<string, Room>();
