@@ -23,7 +23,7 @@ export function Leaderboard() {
   const [tab, setTab] = useState<'speed' | 'avgSpeed' | 'wins' | 'elo'>('speed');
 
   useEffect(() => {
-    fetch('/api/leaderboard')
+    fetch('/blitz/api/leaderboard')
       .then(r => r.json())
       .then(setData)
       .catch(() => {});

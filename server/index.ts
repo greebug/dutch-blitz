@@ -290,6 +290,10 @@ const disconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 // ─── Health / diagnostics ─────────────────────────────────────────────────────
 
+// Deliberately NOT under /blitz: Railway probes this on the origin directly,
+// never through the hub Worker, so it stays at the origin root. It is also what
+// railway.json's healthcheckPath points at now that / is a redirect rather than
+// the app itself.
 app.get('/api/health', async (_req, res) => {
   if (!pool) {
     res.json({ db: false, message: 'No DATABASE_URL — stats disabled' });
@@ -305,7 +309,9 @@ app.get('/api/health', async (_req, res) => {
 
 // ─── Leaderboard API ──────────────────────────────────────────────────────────
 
-app.get('/api/leaderboard', async (_req, res) => {
+// Under /blitz because this one IS fetched by the browser, and the browser now
+// talks to bingbongblitz.com, where /blitz/* is what routes here.
+app.get('/blitz/api/leaderboard', async (_req, res) => {
   if (!pool) {
     res.json({ speed: [], avgSpeed: [], wins: [], elo: [] });
     return;
@@ -834,12 +840,23 @@ if (process.env.NODE_ENV === 'production') {
     res.sendFile(path.join(trioPath, 'index.html'));
   });
 
-  // Card game (existing): static assets + SPA catch-all for everything else.
+  // Card game: static assets + SPA fallback, both under /blitz to match Vite's
+  // `base`. It used to own the origin root and catch every unmatched path; that
+  // catch-all is gone deliberately, because bingbongblitz.com now hosts four
+  // games and the hub Worker -- not this server -- decides which one a path
+  // belongs to. Anything unrouted should 404 here rather than silently render
+  // the card game.
   const distPath = path.join(process.cwd(), 'dist');
-  app.use(express.static(distPath));
-  app.get('/{*splat}', (_req, res) => {
+  app.use('/blitz', express.static(distPath)); // serves /blitz/ + /blitz/assets/*
+  app.get('/blitz', (_req, res) => res.redirect('/blitz/')); // bare path -> add slash
+  app.get('/blitz/{*splat}', (_req, res) => { // SPA fallback for deep paths
     res.sendFile(path.join(distPath, 'index.html'));
   });
+
+  // The origin's own root. Anyone landing on the bare Railway hostname (or an
+  // old bookmark from when the card game lived at the domain root) gets sent to
+  // where the game actually is now.
+  app.get('/', (_req, res) => res.redirect('/blitz/'));
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────
