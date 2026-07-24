@@ -9,6 +9,10 @@ export default function App() {
 
   let content: React.ReactNode;
 
+  // True only on the lobby/menu screens -- never mid-countdown or mid-hand,
+  // where a stray click would drop the player out of a live game.
+  const onMenu = multi.countdown === null && !(multi.phase === 'playing' && multi.gameState);
+
   if (multi.countdown !== null) {
     content = <CountdownScreen count={multi.countdown} />;
   } else if (multi.phase === 'playing' && multi.gameState) {
@@ -46,6 +50,22 @@ export default function App() {
 
   return (
     <>
+      {onMenu && (
+        <a
+          href="/"
+          style={{
+            position: 'fixed', top: 10, left: 10, zIndex: 900,
+            padding: '6px 12px', borderRadius: 999,
+            background: 'rgba(255,255,255,0.10)',
+            border: '1px solid rgba(255,255,255,0.15)',
+            color: 'rgba(255,255,255,0.75)',
+            fontSize: 13, fontWeight: 600, textDecoration: 'none',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          ← All games
+        </a>
+      )}
       {content}
       {multi.reconnecting && (
         <div style={{

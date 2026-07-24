@@ -10,5 +10,32 @@
   </head>
   <body>
     <div id="root"></div>
+
+    <!--
+      Back to the games hub at bingbongblitz.com.
+
+      HAND-EDIT WARNING: this directory is a *built* Trio bundle checked into
+      the repo, not source -- Trio's source lives elsewhere. Rebuilding and
+      re-copying the bundle will drop this link unless it is added again (or,
+      better, added to Trio's own source and rebuilt).
+
+      It sits outside #root deliberately, so React never touches it. Bottom-left
+      because app-header already owns the top-left with the Trio brand, and
+      styled for Trio's light theme rather than the dark pills the other games
+      use.
+    -->
+    <a
+      href="/"
+      style="
+        position: fixed; bottom: 14px; left: 14px; z-index: 900;
+        padding: 7px 13px; border-radius: 999px;
+        background: rgba(255, 255, 255, 0.92);
+        border: 1px solid rgba(40, 30, 20, 0.18);
+        box-shadow: 0 2px 10px rgba(40, 30, 20, 0.12);
+        color: #4a3f33; font-size: 13px; font-weight: 600;
+        font-family: system-ui, sans-serif; text-decoration: none;
+      "
+      >← All games</a
+    >
   </body>
 </html>
