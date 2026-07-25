@@ -2,27 +2,18 @@
 
 State as of `769c5b5` (2026-07-25). Read `DESIGN.md` first for the visual system.
 
-## 1. The Arial fallback — offered, not yet approved
+## 1. The Arial fallback — DONE (2026-07-25)
 
-**This is the top item.** Every form control in the app renders in **Arial**, not
-Karla. Browsers do not inherit `font-family` into `button`, `input`, `textarea`
-or `select` — they get the system UI font regardless of what `body` says. On the
-lobby screen alone that's seven elements: Create Game, Join, and all four
-leaderboard tabs. Measured in the live DOM, not inferred.
+`button, input, textarea, select { font: inherit; color: inherit; }` is in
+`src/styles/index.css`. Verified in the live DOM: all 19 form controls on the
+lobby screen report Karla, and walking every text-bearing element for anything
+outside Karla / Alfa Slab One returns zero.
 
-This is almost certainly what Jesse meant by *"a bunch of the other text uses the
-'AI' font"*, and Arial is specifically on the list of fonts
-[impeccable](https://github.com/pbakaus/impeccable) says never to ship.
-
-The whole fix, in `src/styles/index.css`:
-
-```css
-button, input, textarea, select { font: inherit; color: inherit; }
-```
-
-Four lines, no layout or gameplay impact. It was in `1edb530` and got reverted
-along with everything else in that commit. **Jesse has been told about it and
-hasn't said go yet — ask before applying.**
+The wordmark contrast went in at the same time — the single mid-orange offset
+was close in value to the wood behind it, so the letters read furred. All four
+display titles (`.lobby-title`, `.home-title`, `.setup-title`,
+`.blitz-popup-title`) are a two-pass print now: a tight `--accent` impression,
+then a hard `--wood-deep` offset under it for separation from the ground.
 
 ## 2. The rest of `1edb530`, if it's ever wanted
 
@@ -33,15 +24,18 @@ best to worst:
 
 - **Top bar spacing** — "Round 1" runs into the first player's score. One
   `&nbsp;` in `GameBoard.tsx`. Uncontroversial.
-- **Wordmark contrast** — the offset shadow is mid-orange, close in value to the
-  wood behind it, so the letters read furred rather than crisp. The reverted
-  version used a two-pass print: tight orange offset, then a hard ink offset
-  underneath. Jesse called the logo low-contrast, so this one is probably wanted
-  in some form.
 - **Boy/girl detail** — hat band, suspenders, centre-parted hair, cape collar, a
-  proper prayer covering instead of a plain arc. Jesse asked for more detail and
-  this delivered it while keeping the 15px silhouette contract (32% ink
-  difference). Reverted only as collateral.
+  proper prayer covering instead of a plain arc. **Measured 2026-07-25 and it
+  does not actually render.** Every one of those detail shapes is `currentColor`
+  at opacity ~0.3, drawn *on top of* the solid same-color body beneath it — and
+  white at 30% over opaque white is still white. Rasterized at 96px (3.4× the
+  size it ever ships at), the whole detail layer moves **0.37%** of the icon's
+  pixels. The current icons have the same flaw; only outline geometry really
+  differs between the two. Refilling those same shapes with ink (`#000` at 0.3)
+  so they *cut* into the figure instead of painting over it takes it to
+  **8.1%**, and the 15px silhouette contract still holds at 28.1% (floor ~25%;
+  current measures 32.2% on the same method, so any redraw here costs a little
+  distinctness). All three previewed for Jesse; awaiting his call.
 - **Drawn UI icons** — trophy, stopwatch, link, person, check, pause/play,
   pennant. These were fine; the **medals were not**. `MedalIcon` layered an
   absolutely-positioned numeral over a disc with ribbons and it didn't hold

@@ -58,4 +58,26 @@ arc (bonnet). Two shapes that stay distinct as a blur. That was measured, not
 assumed: rasterized at 15px, **33% of the ink differs** between them.
 
 If you redraw them, re-run that test. Anything under ~25% is too similar to tell
-apart mid-game.
+apart mid-game. The current pair measures 28.1% at 15px, 30.5% at 28px.
+
+**Interior detail must be ink, never a faded `currentColor`.** The figures are
+solid `currentColor` (white, on a colored card), so a detail shape drawn in
+`currentColor` at 0.3 opacity sits on top of that same color at full opacity and
+renders as nothing at all. An earlier version of these icons did exactly that for
+the hat band, suspenders, hair and cape collar, and the whole layer moved **0.37%**
+of the icon's pixels. The same shapes filled with `DETAIL` (`#1d1009`, so they cut
+into the figure) move **8%**. Use `DETAIL`, and measure rather than eyeballing.
+
+### How to measure without a screenshot
+
+The agent sandbox composites no frames, so screenshots time out — but canvas does
+not need frames. Serialize the icon's `<svg>` to a `data:image/svg+xml` URL, load
+it as an `Image`, `drawImage` it onto a canvas over the card color, and read
+`getImageData`. From there:
+
+- **detail visibility** — raster the icon with and without its opacity<1 shapes
+  and count pixels that differ.
+- **silhouette contract** — raster boy and girl at 15px, threshold each pixel to
+  ink/no-ink, and report `differing / (ink in either)`.
+
+Both numbers above came from that, run in the live preview tab.

@@ -133,7 +133,19 @@ export function FactionIcon({ color, ...rest }: IconProps & { color: CardColor }
  * boy is a hard horizontal line (broad flat hat brim), the girl is a rounded
  * arc (bonnet). Those two shapes are not confusable even as a blur, which is
  * the only test that matters here.
+ *
+ * Interior detail has to CUT INTO the figure, never paint on top of it. An
+ * earlier pass drew the hat band, suspenders, hair and cape collar in
+ * `currentColor` at 0.3 opacity -- but the body underneath is that same color
+ * at full opacity, and white-at-30%-over-white is just white. Rasterized at
+ * 96px, 3.4x the size these ever ship at, that entire detail layer moved 0.37%
+ * of the icon's pixels: it was drawing nothing. Filling the same shapes with
+ * ink takes it to 8%. Measured, not assumed -- see DESIGN.md for the method.
  */
+/** Warm ink for interior detail. Not `currentColor` (see above) and not a bare
+ * black (see DESIGN.md: nothing on the page is a true neutral). */
+const DETAIL = '#1d1009';
+
 export function BoyIcon({ size = 24, className, style }: IconProps) {
   return (
     <svg
@@ -146,16 +158,19 @@ export function BoyIcon({ size = 24, className, style }: IconProps) {
       aria-hidden="true"
       focusable="false"
     >
-      {/* shoulders */}
-      <path d="M8 48c0-8 7.2-12.5 16-12.5S40 40 40 48z" />
-      {/* suspender straps -- invisible at 13px, charm at 26px */}
-      <path d="M17.5 37.5 20 48h-3l-2.2-9.6zM30.5 37.5 28 48h3l2.2-9.6z" opacity="0.35" />
+      {/* shoulders and shirt */}
+      <path d="M7 48c0-8.5 7.6-13 17-13s17 4.5 17 13z" />
+      {/* suspender straps -- gone by 15px, character at 28px */}
+      <path d="M18.6 36.2 21 48h-2.9l-2.2-10.6zM29.4 36.2 27 48h2.9l2.2-10.6z" fill={DETAIL} opacity="0.3" />
       {/* head */}
-      <circle cx="24" cy="25" r="9" />
+      <circle cx="24" cy="25.5" r="9" />
+      {/* hair fringe under the brim -- a bowl cut, the actual Plain haircut */}
+      <path d="M15.4 22.5a9 9 0 0 1 17.2 0z" fill={DETAIL} opacity="0.3" />
       {/* flat broad brim: the whole point of the silhouette */}
-      <rect x="3" y="13.5" width="42" height="5" rx="2.5" />
-      {/* crown */}
-      <path d="M14 13.5V9.5C14 6 18.5 3.5 24 3.5S34 6 34 9.5v4z" />
+      <rect x="2.5" y="14" width="43" height="4.6" rx="2.3" />
+      {/* crown, with a band where it meets the brim */}
+      <path d="M14 14V9.8C14 6.3 18.5 4 24 4s10 2.3 10 5.8V14z" />
+      <path d="M13.6 12.2h20.8V14H13.6z" fill={DETAIL} opacity="0.3" />
     </svg>
   );
 }
@@ -172,16 +187,22 @@ export function GirlIcon({ size = 24, className, style }: IconProps) {
       aria-hidden="true"
       focusable="false"
     >
-      {/* shoulders, with a cape collar */}
-      <path d="M8 48c0-8 7.2-12.5 16-12.5S40 40 40 48z" />
-      <path d="M24 36.5 31 48h-14z" opacity="0.35" />
+      {/* shoulders */}
+      <path d="M7 48c0-8.5 7.6-13 17-13s17 4.5 17 13z" />
+      {/* cape collar -- the pointed shoulder cape of Plain dress */}
+      <path d="M24 36 32.5 48h-17z" fill={DETAIL} opacity="0.3" />
       {/* head */}
-      <circle cx="24" cy="25" r="9" />
-      {/* bonnet: a thick dome over and behind the head, open at the face.
-          Reads as a curve at any size -- the opposite shape to the boy's brim. */}
-      <path d="M6 27a18 18 0 0 1 36 0v3a2.5 2.5 0 0 1-2.5 2.5h-4.2A12 12 0 1 0 12.7 32.5H8.5A2.5 2.5 0 0 1 6 30z" />
-      {/* chin ribbon */}
-      <path d="M22.5 33.5h3v4.5h-3z" opacity="0.35" />
+      <circle cx="24" cy="25.5" r="9" />
+      {/* centre-parted hair, the way it shows at the temples under a covering */}
+      <path
+        d="M15.6 22.6a9 9 0 0 1 7-6.4v6.4h-1.9a4.6 4.6 0 0 0-4 3.4zM32.4 22.6a9 9 0 0 0-7-6.4v6.4h1.9a4.6 4.6 0 0 1 4 3.4z"
+        fill={DETAIL}
+        opacity="0.3"
+      />
+      {/* prayer covering: a thick dome over and behind the head, open at the
+          face. Reads as a curve at any size -- the opposite shape to the boy's
+          hard horizontal brim, which is what keeps them apart at 15px. */}
+      <path d="M5.5 27a18.5 18.5 0 0 1 37 0v3.2a2.6 2.6 0 0 1-2.6 2.6h-4.6A12 12 0 1 0 12.7 32.8H8.1a2.6 2.6 0 0 1-2.6-2.6z" />
     </svg>
   );
 }

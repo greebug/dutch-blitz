@@ -67,6 +67,16 @@
   --card-sm-h:  48px;
 }
 
+/* Form controls do NOT inherit font-family -- browsers hand them the system
+   UI font no matter what body says. That silently left every button and input
+   in this app rendering in ARIAL, which is both off-brand and specifically one
+   of the fonts you're told never to ship. Setting it per-class is whack-a-mole;
+   this is the fix. */
+button, input, textarea, select {
+  font: inherit;
+  color: inherit;
+}
+
 html, body, #root {
   height: 100%; width: 100%;
   background: var(--wood);
@@ -101,9 +111,7 @@ body {
   font-family: var(--font-display);
   font-size: 42px; letter-spacing: 0; line-height: 1;
   color: var(--paper);
-  /* A hard offset shadow in the accent, like a two-pass poster print. Not a
-     glow -- a second impression of the same letters, slightly off-register. */
-  text-shadow: 3px 3px 0 var(--accent-dark);
+  text-shadow: 2px 2px 0 var(--accent), 5px 5px 0 var(--wood-deep);
 }
 .setup-subtitle {
   font-size: 12px; color: var(--paper-60); margin-top: 2px;
@@ -733,7 +741,7 @@ body {
   font-family: var(--font-display);
   font-size: 44px; color: var(--paper); letter-spacing: 0;
   /* Offset print, not a glow. */
-  text-shadow: 4px 4px 0 var(--accent-dark);
+  text-shadow: 2px 2px 0 var(--accent), 5px 5px 0 var(--wood-deep);
 }
 .blitz-popup-player {
   font-size: 16px; font-weight: 600;
@@ -887,7 +895,7 @@ body {
   font-family: var(--font-display);
   font-size: 50px; letter-spacing: 0; line-height: 0.95;
   color: var(--paper); text-align: center;
-  text-shadow: 4px 4px 0 var(--accent-dark);
+  text-shadow: 2px 2px 0 var(--accent), 5px 5px 0 var(--wood-deep);
 }
 .home-subtitle {
   font-size: 12px; color: var(--paper-60); margin-top: 4px;
@@ -927,7 +935,10 @@ body {
 .lobby-title {
   font-family: var(--font-display);
   font-size: 30px; color: var(--paper); letter-spacing: 0;
-  text-shadow: 3px 3px 0 var(--accent-dark);
+  /* Two-pass poster print: a tight impression in the accent, then a hard ink
+     offset under it. The single mid-orange offset sat too close in value to
+     the wood behind it, so the letters read furred instead of crisp. */
+  text-shadow: 2px 2px 0 var(--accent), 4px 4px 0 var(--wood-deep);
 }
 .lobby-room-code {
   font-family: var(--font-display);
