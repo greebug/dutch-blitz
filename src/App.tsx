@@ -3,6 +3,7 @@ import { GameBoard } from './components/GameBoard';
 import { MultiLobbyScreen } from './components/MultiLobbyScreen';
 import { CountdownScreen } from './components/CountdownScreen';
 import { useMultiplayer } from './hooks/useMultiplayer';
+import { BarnStar } from './components/icons';
 
 export default function App() {
   const multi = useMultiplayer();
@@ -51,34 +52,16 @@ export default function App() {
   return (
     <>
       {onMenu && (
-        <a
-          href="/"
-          style={{
-            position: 'fixed', top: 10, left: 10, zIndex: 900,
-            padding: '6px 12px', borderRadius: 999,
-            background: 'rgba(255,255,255,0.10)',
-            border: '1px solid rgba(255,255,255,0.15)',
-            color: 'rgba(255,255,255,0.75)',
-            fontSize: 13, fontWeight: 600, textDecoration: 'none',
-            backdropFilter: 'blur(4px)',
-          }}
-        >
+        <a href="/" className="hub-back-link">
           ← All games
         </a>
       )}
       {content}
       {multi.reconnecting && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 9999,
-          background: 'rgba(0,0,0,0.72)',
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', gap: 14,
-        }}>
-          <div style={{ fontSize: 36 }}>📶</div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: '#fff' }}>Reconnecting…</div>
-          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', textAlign: 'center', maxWidth: 260 }}>
-            Your game is held for 60 seconds
-          </div>
+        <div className="reconnect-overlay">
+          <BarnStar size={44} style={{ color: 'var(--accent)' }} className="reconnect-star" />
+          <div className="reconnect-title">Reconnecting…</div>
+          <div className="reconnect-note">Your game is held for 60 seconds</div>
         </div>
       )}
     </>

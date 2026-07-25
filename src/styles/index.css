@@ -1,22 +1,65 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ===========================================================================
+   Dutch Blitz is a Pennsylvania Dutch game -- "a vonderful goot card game" --
+   and it's played on a table. So the visual language is barn folk art on
+   painted wood: warm cream ink, milk-paint accents, slab poster type, hex
+   signs. That's a real tradition with real rules, which is exactly why it's
+   worth following instead of inventing a look.
+
+   Deliberately avoided, because they're the house style of every generated
+   dark UI: glassmorphism, gradient-filled buttons, colored glows, cards
+   nested inside cards, overshoot/bounce easing, and system-default type.
+
+   The four card colors are NOT up for redesign -- they're the identity of the
+   physical game, and their pairing with the deck symbols is canon: green
+   pump, red carriage, yellow pail, blue plow. Only the furniture around them
+   changed.
+   =========================================================================== */
+
 :root {
-  --wood:       #2d1a0e;
-  --wood-light: #3e2410;
+  /* Painted-wood table. Tinted, never neutral: a grey overlay on a warm
+     ground is the fastest way to make wood look like plastic. */
+  --wood:       #2b1a10;
+  --wood-light: #3d2716;
+  --wood-deep:  #1d1009;
   --felt:       #1a4a1e;
   --felt-light: #245228;
+
+  /* Ink and overlays, all warmed toward the wood rather than pure black or
+     pure white. --ink-N / --paper-N replace bare rgba(0,0,0,x) / rgba(255,
+     255,255,x) so nothing on the page is a true grey. */
+  --paper:      #f6ead2;
+  --ink:        #1d1009;
+  --paper-90:   rgba(246,234,210,0.90);
+  --paper-60:   rgba(246,234,210,0.60);
+  --paper-38:   rgba(246,234,210,0.38);
+  --paper-20:   rgba(246,234,210,0.20);
+  --paper-12:   rgba(246,234,210,0.12);
+  --paper-07:   rgba(246,234,210,0.07);
+  --ink-55:     rgba(29,16,9,0.55);
+  --ink-35:     rgba(29,16,9,0.35);
+  --ink-22:     rgba(29,16,9,0.22);
+
+  /* Canon deck colors -- unchanged. */
   --card-red:    #c62828;
   --card-blue:   #1565c0;
   --card-green:  #43a047;
   --card-yellow: #b07b00;
-  --card-back-top: #37474f;
-  --card-back-btm: #263238;
-  --text-white: #f5f5f5;
-  --text-dark:  #111;
-  --accent:     #66bb6a;
-  --accent-dark:#388e3c;
-  --gold:       #ffc107;
-  --radius:     9px;
+
+  --card-back-top: #6d4326;
+  --card-back-btm: #4a2c17;
+  --text-white: var(--paper);
+  --text-dark:  #21140b;
+  /* Milk-paint barn red-orange for the primary action: it reads as painted
+     wood rather than as a UI accent, and it's the one warm color that doesn't
+     collide with any of the four decks. */
+  --accent:     #e0873a;
+  --accent-dark:#b3651f;
+  --gold:       #e8b33c;
+  --radius:     7px;
+  --font-display: 'Alfa Slab One', Georgia, serif;
+  --font-ui: 'Karla', system-ui, sans-serif;
   /* Normal card — scales with viewport: ~70px phone, ~90px tablet */
   --card-w:     clamp(64px, 18vw, 92px);
   --card-h:     clamp(89px, 25vw, 128px);
@@ -27,13 +70,23 @@
 html, body, #root {
   height: 100%; width: 100%;
   background: var(--wood);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--font-ui);
   color: var(--text-white);
   /* manipulation = allows scroll + tap, blocks double-tap zoom.
      Screens that need full lock (game board) override this with touch-action:none. */
   touch-action: manipulation;
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* Wood grain. Long, irregular, near-horizontal streaks -- a repeating stripe
+   at one spacing reads as corduroy, three at different spacings reads as a
+   plank. Cheap enough to sit under every screen. */
+body {
+  background-image:
+    repeating-linear-gradient(91deg, transparent 0 37px, rgba(246,234,210,0.014) 37px 38px),
+    repeating-linear-gradient(89.4deg, transparent 0 83px, rgba(29,16,9,0.35) 83px 85px),
+    repeating-linear-gradient(90.5deg, transparent 0 151px, rgba(246,234,210,0.02) 151px 152px);
 }
 
 /* ── SETUP ── */
@@ -44,38 +97,64 @@ html, body, #root {
   background: var(--wood);
 }
 .setup-title {
-  font-size: 40px; font-weight: 900; letter-spacing: -1px;
-  color: var(--accent); text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+  font-family: var(--font-display);
+  font-size: 42px; letter-spacing: 0; line-height: 1;
+  color: var(--paper);
+  /* A hard offset shadow in the accent, like a two-pass poster print. Not a
+     glow -- a second impression of the same letters, slightly off-register. */
+  text-shadow: 3px 3px 0 var(--accent-dark);
 }
-.setup-subtitle { font-size: 13px; color: rgba(255,255,255,0.5); margin-top: -10px; }
+.setup-subtitle {
+  font-size: 12px; color: var(--paper-60); margin-top: 2px;
+  letter-spacing: 0.14em; text-transform: uppercase; font-weight: 700;
+}
+
+/* The painted signboard: one panel, with the double keyline you'd see routed
+   into a barn sign or drawn around a fraktur. It replaces a translucent
+   rounded card -- and it's the ONLY panel on the screen, so the controls
+   inside it don't each get a box of their own. */
 .setup-card {
-  background: rgba(0,0,0,0.3); border-radius: 16px; padding: 20px;
-  width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 16px;
+  background: var(--wood-light);
+  border: 1px solid var(--paper-20);
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px var(--wood-light), inset 0 0 0 4px var(--paper-12);
+  padding: 22px 20px;
+  width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 18px;
 }
 .setup-label {
-  font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.6);
-  text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 5px;
+  font-size: 10px; font-weight: 800; color: var(--paper-38);
+  text-transform: uppercase; letter-spacing: 0.16em; margin-bottom: 7px;
 }
 .setup-input {
-  background: rgba(255,255,255,0.1); border: 1.5px solid rgba(255,255,255,0.2);
-  border-radius: 10px; color: white; font-size: 17px; padding: 12px 14px;
-  width: 100%; outline: none;
+  background: var(--wood-deep); border: 1.5px solid var(--paper-20);
+  border-radius: 4px; color: var(--paper); font-size: 17px; padding: 12px 14px;
+  width: 100%; outline: none; font-family: var(--font-ui);
 }
 .setup-input:focus { border-color: var(--accent); }
 .setup-row { display: flex; gap: 8px; }
 .option-btn {
-  flex: 1; padding: 10px 4px; border-radius: 10px;
-  border: 2px solid rgba(255,255,255,0.2);
-  background: rgba(255,255,255,0.07);
-  color: white; font-size: 12px; font-weight: 700; cursor: pointer;
-  transition: all 0.12s; text-align: center;
+  flex: 1; padding: 10px 4px; border-radius: 4px;
+  border: 1.5px solid var(--paper-20);
+  background: transparent;
+  color: var(--paper-60); font-size: 12px; font-weight: 700; cursor: pointer;
+  font-family: var(--font-ui);
+  transition: color 0.12s, border-color 0.12s, background-color 0.12s;
+  text-align: center; min-height: 40px;
 }
-.option-btn.selected { border-color: var(--accent); background: var(--accent-dark); }
+.option-btn:hover { color: var(--paper); border-color: var(--paper-38); }
+.option-btn.selected {
+  border-color: var(--accent); background: var(--accent); color: var(--text-dark);
+}
+/* Solid painted button. No gradient, no glow -- it's the only filled thing
+   on the screen, which is a stronger signal than either. */
 .start-btn {
   background: var(--accent); color: var(--text-dark); border: none;
-  border-radius: 14px; padding: 16px; font-size: 18px; font-weight: 900;
-  width: 100%; cursor: pointer; transition: transform 0.1s;
+  border-radius: 4px; padding: 15px; font-size: 17px; font-weight: 800;
+  font-family: var(--font-ui); letter-spacing: 0.02em;
+  width: 100%; max-width: 380px; cursor: pointer;
+  transition: background-color 0.12s, transform 0.08s;
 }
+.start-btn:hover:not(:disabled) { background: #ee9648; }
 .start-btn:active { transform: scale(0.97); }
 
 /* ── GAME BOARD ── */
@@ -95,8 +174,8 @@ html, body, #root {
       88deg,
       transparent,
       transparent 60px,
-      rgba(255,255,255,0.015) 60px,
-      rgba(255,255,255,0.015) 62px
+      rgba(246,234,210,0.015) 60px,
+      rgba(246,234,210,0.015) 62px
     ),
     var(--wood);
 }
@@ -104,13 +183,13 @@ html, body, #root {
 /* ── TOP BAR ── */
 .top-bar {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 5px 12px; background: rgba(0,0,0,0.4); flex-shrink: 0;
-  border-bottom: 1px solid rgba(255,255,255,0.06); height: 36px;
+  padding: 5px 12px; background: rgba(29,16,9,0.4); flex-shrink: 0;
+  border-bottom: 1px solid rgba(246,234,210,0.06); height: 36px;
 }
 .top-bar-round { font-size: 13px; font-weight: 800; color: var(--accent); }
-.top-bar-scores { display: flex; gap: 10px; font-size: 11px; color: rgba(255,255,255,0.7); }
+.top-bar-scores { display: flex; gap: 10px; font-size: 11px; color: rgba(246,234,210,0.7); }
 .top-bar-score span { font-weight: 700; color: white; }
-.top-bar-target { font-size: 11px; color: rgba(255,255,255,0.4); }
+.top-bar-target { font-size: 11px; color: rgba(246,234,210,0.4); }
 
 /* ── PLAY AREA (sidebars + center) ── */
 .play-area {
@@ -130,19 +209,19 @@ html, body, #root {
   align-items: center;
   justify-content: center;
   padding: 8px 5px;
-  background: rgba(0,0,0,0.22);
-  border-right: 1px solid rgba(255,255,255,0.05);
+  background: rgba(29,16,9,0.22);
+  border-right: 1px solid rgba(246,234,210,0.05);
   gap: 8px;
   overflow: hidden;
 }
 .sidebar.right {
   border-right: none;
-  border-left: 1px solid rgba(255,255,255,0.05);
+  border-left: 1px solid rgba(246,234,210,0.05);
 }
 .sidebar-empty {
   width: 110px;
   flex-shrink: 0;
-  background: rgba(0,0,0,0.12);
+  background: rgba(29,16,9,0.12);
 }
 
 /* Sidebar opponent */
@@ -156,7 +235,7 @@ html, body, #root {
 .opp-sidebar-name {
   font-size: 10px;
   font-weight: 800;
-  color: rgba(255,255,255,0.9);
+  color: rgba(246,234,210,0.9);
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
@@ -192,7 +271,7 @@ html, body, #root {
 .opp-sidebar-diff {
   font-size: 8px;
   text-transform: uppercase;
-  color: rgba(255,255,255,0.3);
+  color: rgba(246,234,210,0.3);
   letter-spacing: 0.5px;
   margin-top: -4px;
 }
@@ -207,7 +286,7 @@ html, body, #root {
   justify-content: center;
   font-size: 15px;
   font-weight: 900;
-  border: 1.5px solid rgba(255,255,255,0.25);
+  border: 1.5px solid rgba(246,234,210,0.25);
   flex-shrink: 0;
   line-height: 1;
 }
@@ -217,11 +296,11 @@ html, body, #root {
 .opp-mini-card.card-yellow { background: var(--card-yellow); color: white; }
 .opp-mini-card.mini-back {
   background: linear-gradient(145deg, var(--card-back-top), var(--card-back-btm));
-  border-color: rgba(255,255,255,0.15);
+  border-color: rgba(246,234,210,0.15);
 }
 .opp-mini-card.mini-empty {
-  background: rgba(255,255,255,0.04);
-  border: 1.5px dashed rgba(255,255,255,0.12);
+  background: rgba(246,234,210,0.04);
+  border: 1.5px dashed rgba(246,234,210,0.12);
 }
 .opp-blitz-badge {
   position: absolute; top: -5px; right: -6px;
@@ -255,7 +334,7 @@ html, body, #root {
   flex-direction: row;
   align-items: center;
   gap: 6px;
-  background: rgba(0,0,0,0.3);
+  background: rgba(29,16,9,0.3);
   border-radius: 10px;
   padding: 5px 8px;
   flex-shrink: 1;
@@ -264,7 +343,7 @@ html, body, #root {
 }
 .opp-top-name {
   font-size: 10px; font-weight: 800;
-  color: rgba(255,255,255,0.9);
+  color: rgba(246,234,210,0.9);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -281,7 +360,7 @@ html, body, #root {
 }
 .opp-top-diff {
   font-size: 8px; text-transform: uppercase;
-  color: rgba(255,255,255,0.3);
+  color: rgba(246,234,210,0.3);
   margin-left: 2px;
 }
 
@@ -291,11 +370,11 @@ html, body, #root {
   min-height: 80px;
   background: var(--felt);
   border-radius: 28px;
-  border: 3px solid rgba(255,255,255,0.1);
+  border: 3px solid rgba(246,234,210,0.1);
   box-shadow:
-    inset 0 3px 20px rgba(0,0,0,0.4),
-    inset 0 -2px 8px rgba(0,0,0,0.2),
-    0 4px 16px rgba(0,0,0,0.5);
+    inset 0 3px 20px rgba(29,16,9,0.4),
+    inset 0 -2px 8px rgba(29,16,9,0.2),
+    0 4px 16px rgba(29,16,9,0.5);
   padding: 10px 12px;
   display: flex;
   flex-direction: column;
@@ -304,8 +383,9 @@ html, body, #root {
   overflow: hidden;
 }
 .dutch-oval-label {
+  font-family: var(--font-display);
   font-size: 10px; font-weight: 800;
-  color: rgba(255,255,255,0.4);
+  color: rgba(246,234,210,0.4);
   text-transform: uppercase; letter-spacing: 1.5px;
   text-align: center;
   flex-shrink: 0;
@@ -330,20 +410,20 @@ html, body, #root {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px dashed rgba(255,255,255,0.14);
+  border: 2px dashed rgba(246,234,210,0.14);
   transition: transform 0.1s, box-shadow 0.1s, border-color 0.1s;
   min-height: 0;
 }
 .dutch-slot.occupied {
   border-style: solid;
   border-width: 2px;
-  box-shadow: 0 3px 10px rgba(0,0,0,0.5);
-  animation: cardPop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 3px 10px rgba(29,16,9,0.5);
+  animation: cardPop 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .dutch-slot-highlight {
   border-color: white !important;
   transform: scale(1.06) !important;
-  box-shadow: 0 0 16px rgba(255,255,255,0.75) !important;
+  box-shadow: 0 0 16px rgba(246,234,210,0.75) !important;
 }
 /* All empty slots glow green when holding a 1 card */
 .dutch-slot-new-target {
@@ -370,8 +450,8 @@ html, body, #root {
   flex-direction: column;
   padding: 6px 14px 8px;
   gap: 8px;
-  background: rgba(0,0,0,0.3);
-  border-top: 1px solid rgba(255,255,255,0.08);
+  background: rgba(29,16,9,0.3);
+  border-top: 1px solid rgba(246,234,210,0.08);
   overflow: visible;
 }
 
@@ -415,15 +495,15 @@ html, body, #root {
 /* Pile count badge (for post/wood active) */
 .pile-count-badge {
   position: absolute; top: -7px; right: -7px;
-  background: rgba(0,0,0,0.65); color: white;
+  background: rgba(29,16,9,0.65); color: white;
   border-radius: 50%; width: 20px; height: 20px;
   font-size: 10px; font-weight: 800;
   display: flex; align-items: center; justify-content: center; z-index: 10;
-  border: 1.5px solid rgba(255,255,255,0.3);
+  border: 1.5px solid rgba(246,234,210,0.3);
 }
 
 .section-label {
-  font-size: 8px; color: rgba(255,255,255,0.35);
+  font-size: 8px; color: rgba(246,234,210,0.35);
   text-transform: uppercase; letter-spacing: 0.5px;
 }
 
@@ -434,7 +514,7 @@ html, body, #root {
   border-radius: 50%; width: 22px; height: 22px;
   font-size: 11px; font-weight: 800;
   display: flex; align-items: center; justify-content: center; z-index: 10;
-  border: 2px solid rgba(0,0,0,0.3);
+  border: 2px solid rgba(29,16,9,0.3);
 }
 
 /* ── CARD ── */
@@ -442,11 +522,14 @@ html, body, #root {
   width: var(--card-w); height: var(--card-h);
   border-radius: var(--radius);
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
   touch-action: none; cursor: grab; position: relative;
   flex-shrink: 0;
-  border: 1.5px solid rgba(255,255,255,0.3);
+  /* Cream border + an inset keyline: a printed card has a margin, not a
+     1px stroke. This is what stops them reading as colored <div>s. */
+  border: 2px solid var(--paper);
+  box-shadow: 0 2px 5px rgba(29,16,9,0.45), inset 0 0 0 1.5px rgba(29,16,9,0.18);
   transition: opacity 0.15s;
+  overflow: hidden;
 }
 .card:active { cursor: grabbing; }
 .card.dragging { opacity: 0.2; }
@@ -455,26 +538,28 @@ html, body, #root {
 .card-blue   { background: var(--card-blue);   color: white; }
 .card-green  { background: var(--card-green);  color: white; }
 .card-yellow { background: var(--card-yellow); color: white; }
+/* Face-down: a barn star on painted wood, the way a real deck has a design
+   back rather than a blank rectangle. */
 .card-back {
-  background:
-    repeating-linear-gradient(
-      -45deg, transparent, transparent 5px,
-      rgba(255,255,255,0.04) 5px, rgba(255,255,255,0.04) 10px
-    ),
-    linear-gradient(145deg, var(--card-back-top), var(--card-back-btm));
-  color: rgba(255,255,255,0.08);
+  background: var(--card-back-btm);
+  color: var(--paper);
   cursor: default;
+  display: flex; align-items: center; justify-content: center;
 }
+.card-back-star { opacity: 0.3; }
 .card-empty {
-  background: rgba(255,255,255,0.05);
-  border: 2px dashed rgba(255,255,255,0.15);
+  background: rgba(29,16,9,0.25);
+  border: 2px dashed var(--paper-20);
+  box-shadow: none;
   cursor: default;
-  color: rgba(255,255,255,0.2);
-  font-size: 14px;
+  color: var(--paper-38);
+  font-size: 12px; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase;
 }
 
 .card-center-number {
-  font-size: 30px; font-weight: 900; line-height: 1;
+  font-family: var(--font-display);
+  font-size: 28px; line-height: 1;
   position: relative; z-index: 1;
 }
 .card-corner {
@@ -489,7 +574,10 @@ html, body, #root {
 .card-corner.tr { top: 5px;    right: 6px; }
 .card-corner.bl { bottom: 6px; left: 8px;  transform: rotate(180deg); }
 .card-corner.br { bottom: 6px; right: 8px; transform: rotate(180deg); }
-.corner-number { font-size: 20px; font-weight: 900; line-height: 1; }
+.corner-number {
+  font-family: var(--font-display);
+  font-size: 19px; line-height: 1;
+}
 
 /* Small card size override */
 .card-sm {
@@ -501,7 +589,7 @@ html, body, #root {
 .card-sm .card-center-number { font-size: 16px !important; }
 .card-sm .card-corner.tl { top: 3px; left: 4px; }
 .card-sm .card-corner.br { bottom: 3px; right: 4px; }
-.card-sm .corner-number { font-size: 10px; }
+.card-sm .corner-number { font-size: 11px; }
 .card-sm .corner-gender { font-size: 7px; }
 
 /* ── FLY CARD (bot play animation) ── */
@@ -512,13 +600,13 @@ html, body, #root {
   width: 46px;
   height: 64px;
   border-radius: 8px;
-  border: 1.5px solid rgba(255,255,255,0.3);
+  border: 1.5px solid rgba(246,234,210,0.3);
   display: flex;
   align-items: flex-start;
   padding: 4px 6px;
   font-size: 14px;
   font-weight: 900;
-  box-shadow: 0 6px 16px rgba(0,0,0,0.55);
+  box-shadow: 0 6px 16px rgba(29,16,9,0.55);
   transform: translate(-50%, -50%);
   animation: flyToTarget 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
 }
@@ -534,18 +622,18 @@ html, body, #root {
 /* ── WOOD DEAL ANIMATION ── */
 @keyframes woodDeal {
   0%   { transform: translateY(-10px) scale(0.92); opacity: 0; }
-  55%  { transform: translateY(2px)   scale(1.03); opacity: 1; }
+  55%  { transform: translateY(1px)   scale(1);    opacity: 1; }
   100% { transform: translateY(0)     scale(1);    opacity: 1; }
 }
 .wood-deal-animate {
-  animation: woodDeal 0.32s cubic-bezier(0.34, 1.2, 0.64, 1) forwards;
+  animation: woodDeal 0.32s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 /* ── GHOST CARD ── */
 .ghost-card {
   position: fixed; pointer-events: none; z-index: 1000;
   transform: translate(-50%, -50%) rotate(4deg) scale(1.08);
-  box-shadow: 0 10px 28px rgba(0,0,0,0.55);
+  box-shadow: 0 10px 28px rgba(29,16,9,0.55);
   opacity: 0.95;
   transition: none;
 }
@@ -562,7 +650,7 @@ html, body, #root {
   display: flex; align-items: center; justify-content: center;
   font-size: 72px; font-weight: 900; letter-spacing: -2px;
   color: white;
-  text-shadow: 0 0 30px rgba(255,255,255,0.8), 0 0 60px rgba(102,187,106,0.6);
+  text-shadow: 0 0 30px rgba(246,234,210,0.8), 0 0 60px rgba(102,187,106,0.6);
   pointer-events: none; z-index: 90;
   animation: dutchFlash 1.2s ease-out forwards;
 }
@@ -575,40 +663,39 @@ html, body, #root {
 
 /* ── TOP BAR PAUSE BUTTON ── */
 .pause-btn {
-  background: rgba(255,255,255,0.12);
-  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(246,234,210,0.12);
+  border: 1px solid rgba(246,234,210,0.2);
   border-radius: 8px;
   color: white; font-size: 15px;
   padding: 3px 10px; cursor: pointer;
   transition: background 0.1s;
 }
-.pause-btn:active { background: rgba(255,255,255,0.22); }
+.pause-btn:active { background: rgba(246,234,210,0.22); }
 
 /* ── PAUSE OVERLAY ── */
 .pause-overlay {
   position: absolute; inset: 0;
-  background: rgba(0,0,0,0.78);
+  background: rgba(29,16,9,0.78);
   display: flex; align-items: center; justify-content: center;
   z-index: 70;
   animation: fadeIn 0.15s ease;
 }
 .pause-dialog {
   background: var(--wood-light);
-  border: 2px solid rgba(255,255,255,0.15);
+  border: 2px solid rgba(246,234,210,0.15);
   border-radius: 22px;
   padding: 36px 48px;
   display: flex; flex-direction: column; align-items: center;
   gap: 24px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  box-shadow: 0 20px 60px rgba(29,16,9,0.6);
 }
 .pause-title {
-  font-size: 38px; font-weight: 900;
-  color: rgba(255,255,255,0.9);
-  letter-spacing: -1px;
+  font-family: var(--font-display);
+  font-size: 36px; color: var(--paper); letter-spacing: 0;
 }
 .pause-resume-btn {
   background: var(--accent); color: var(--text-dark);
-  border: none; border-radius: 14px;
+  border: none; border-radius: 4px;
   padding: 14px 36px; font-size: 18px; font-weight: 800;
   cursor: pointer; transition: transform 0.1s;
 }
@@ -617,7 +704,7 @@ html, body, #root {
 /* ── BLITZ POPUP ── */
 .blitz-popup-overlay {
   position: absolute; inset: 0;
-  background: rgba(0,0,0,0.7);
+  background: rgba(29,16,9,0.7);
   display: flex; align-items: center; justify-content: center;
   z-index: 80;
   animation: fadeIn 0.2s ease;
@@ -633,23 +720,23 @@ html, body, #root {
   padding: 28px 32px;
   display: flex; flex-direction: column; align-items: center;
   gap: 12px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  box-shadow: 0 20px 60px rgba(29,16,9,0.6);
   min-width: 200px;
-  animation: popIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: popIn 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
 @keyframes popIn {
   from { transform: scale(0.7); opacity: 0; }
   to   { transform: scale(1);   opacity: 1; }
 }
 .blitz-popup-title {
-  font-size: 42px; font-weight: 900;
-  color: var(--accent);
-  text-shadow: 0 0 20px rgba(102,187,106,0.5);
-  letter-spacing: -1px;
+  font-family: var(--font-display);
+  font-size: 44px; color: var(--paper); letter-spacing: 0;
+  /* Offset print, not a glow. */
+  text-shadow: 4px 4px 0 var(--accent-dark);
 }
 .blitz-popup-player {
   font-size: 16px; font-weight: 600;
-  color: rgba(255,255,255,0.8);
+  color: rgba(246,234,210,0.8);
 }
 .blitz-popup-btn {
   background: var(--accent); color: var(--text-dark);
@@ -671,41 +758,41 @@ html, body, #root {
 .gameover-headline {
   font-size: 28px; font-weight: 900; color: var(--accent); text-align: center;
 }
-.gameover-round { font-size: 15px; font-weight: 700; color: rgba(255,255,255,0.6); margin-top: -6px; }
+.gameover-round { font-size: 15px; font-weight: 700; color: rgba(246,234,210,0.6); margin-top: -6px; }
 .score-table { width: 100%; max-width: 380px; border-collapse: collapse; }
 .score-table th {
-  font-size: 11px; color: rgba(255,255,255,0.45);
+  font-size: 11px; color: rgba(246,234,210,0.45);
   text-align: right; padding: 4px 8px; font-weight: 600;
 }
 .score-table th:first-child { text-align: left; }
 .score-row td { padding: 9px 8px; font-size: 15px; font-weight: 700; text-align: right; }
 .score-row td:first-child { text-align: left; }
 .score-row.winner-row { background: var(--accent-dark); border-radius: 10px; }
-.rank-cell { color: rgba(255,255,255,0.4); font-size: 12px; }
+.rank-cell { color: rgba(246,234,210,0.4); font-size: 12px; }
 .name-cell { color: white; }
-.round-score-cell { color: rgba(255,255,255,0.8); }
+.round-score-cell { color: rgba(246,234,210,0.8); }
 .total-cell {
   display: inline-block;
-  background: rgba(255,255,255,0.12); border-radius: 20px;
+  background: rgba(246,234,210,0.12); border-radius: 20px;
   padding: 3px 12px; color: white;
 }
-.winner-row .total-cell { background: rgba(255,255,255,0.2); }
+.winner-row .total-cell { background: rgba(246,234,210,0.2); }
 .play-again-btn {
   background: var(--accent); color: var(--text-dark); border: none;
   border-radius: 14px; padding: 15px; font-size: 17px; font-weight: 900;
   width: 100%; max-width: 380px; cursor: pointer;
 }
 .stats-section { width: 100%; max-width: 380px; }
-.stats-title { font-size: 15px; font-weight: 800; margin-bottom: 10px; }
+.stats-title { font-family: var(--font-display); font-size: 16px; margin-bottom: 10px; }
 .stat-row {
   display: flex; align-items: center; gap: 8px;
-  padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,0.07);
+  padding: 9px 0; border-bottom: 1px solid rgba(246,234,210,0.07);
 }
 .stat-icon { font-size: 18px; }
-.stat-label { color: rgba(255,255,255,0.7); font-size: 14px; font-weight: 600; }
+.stat-label { color: rgba(246,234,210,0.7); font-size: 14px; font-weight: 600; }
 .stat-value-group { margin-left: auto; display: flex; align-items: center; gap: 7px; }
 .stat-value { font-size: 17px; font-weight: 800; }
-.stat-unit { font-size: 12px; color: rgba(255,255,255,0.45); }
+.stat-unit { font-size: 12px; color: rgba(246,234,210,0.45); }
 .stat-delta {
   background: rgba(102,187,106,0.2); color: var(--accent);
   border-radius: 20px; padding: 2px 9px; font-size: 11px; font-weight: 700;
@@ -714,16 +801,16 @@ html, body, #root {
 .stat-star { color: var(--gold); }
 .elo-section {
   width: 100%; max-width: 380px;
-  background: rgba(0,0,0,0.2); border-radius: 12px;
+  background: rgba(29,16,9,0.2); border-radius: 12px;
   padding: 14px; display: flex; justify-content: space-between; align-items: center;
 }
-.elo-label { font-size: 12px; color: rgba(255,255,255,0.55); font-weight: 600; }
+.elo-label { font-size: 12px; color: rgba(246,234,210,0.55); font-weight: 600; }
 .elo-value { font-size: 22px; font-weight: 900; color: var(--gold); }
 .elo-change { font-size: 14px; font-weight: 700; }
 .elo-change.pos { color: var(--accent); }
 .elo-change.neg { color: #ef9a9a; }
 .back-btn {
-  background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.6);
+  background: rgba(246,234,210,0.08); color: rgba(246,234,210,0.6);
   border: none; border-radius: 10px; padding: 10px 20px;
   font-size: 13px; font-weight: 600; cursor: pointer;
   width: 100%; max-width: 380px;
@@ -741,7 +828,7 @@ html, body, #root {
 .rotate-hint {
   display: none;
   position: fixed; inset: 0;
-  background: rgba(0,0,0,0.95);
+  background: rgba(29,16,9,0.95);
   flex-direction: column;
   align-items: center; justify-content: center;
   gap: 20px; z-index: 9999;
@@ -755,7 +842,7 @@ html, body, #root {
   0%, 100% { transform: rotate(0deg); }
   45%, 55% { transform: rotate(90deg); }
 }
-.rotate-hint-text { font-size: 16px; font-weight: 600; color: rgba(255,255,255,0.7); }
+.rotate-hint-text { font-size: 16px; font-weight: 600; color: rgba(246,234,210,0.7); }
 
 /* portrait hint disabled — re-enable when landscape-only mode is desired */
 /* @media (orientation: portrait) { .rotate-hint { display: flex; } } */
@@ -770,7 +857,7 @@ html, body, #root {
 }
 .countdown-label {
   font-size: 16px; font-weight: 700;
-  color: rgba(255,255,255,0.45);
+  color: rgba(246,234,210,0.45);
   text-transform: uppercase; letter-spacing: 3px;
 }
 .countdown-number {
@@ -795,35 +882,37 @@ html, body, #root {
   background: var(--wood); overflow-y: auto;
 }
 .home-title {
-  font-size: 46px; font-weight: 900; letter-spacing: -1.5px;
-  color: var(--accent); text-shadow: 0 2px 16px rgba(0,0,0,0.5);
+  font-family: var(--font-display);
+  font-size: 50px; letter-spacing: 0; line-height: 0.95;
+  color: var(--paper); text-align: center;
+  text-shadow: 4px 4px 0 var(--accent-dark);
 }
 .home-subtitle {
-  font-size: 13px; color: rgba(255,255,255,0.45); margin-top: -12px;
+  font-size: 12px; color: var(--paper-60); margin-top: 4px;
+  letter-spacing: 0.16em; text-transform: uppercase; font-weight: 700;
+  text-align: center;
 }
 .home-modes {
   display: flex; flex-direction: column; gap: 14px;
   width: 100%; max-width: 340px;
 }
 .home-mode-btn {
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  padding: 24px 20px; border-radius: 18px;
-  border: 2px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.06); color: white;
-  cursor: pointer; transition: transform 0.12s, background 0.12s;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  padding: 18px 20px; border-radius: 4px;
+  border: 1px solid var(--paper-20);
+  background: var(--wood-light); color: var(--paper);
+  box-shadow: inset 0 0 0 1px var(--wood-light), inset 0 0 0 4px var(--paper-07);
+  cursor: pointer; text-align: left;
+  transition: border-color 0.12s, background-color 0.12s;
 }
-.home-mode-btn:active { transform: scale(0.97); }
-.home-mode-solo {
-  background: rgba(102,187,106,0.12); border-color: rgba(102,187,106,0.3);
-}
-.home-mode-solo:active { background: rgba(102,187,106,0.22); }
-.home-mode-multi {
-  background: rgba(21,101,192,0.15); border-color: rgba(100,160,255,0.3);
-}
-.home-mode-multi:active { background: rgba(21,101,192,0.28); }
-.home-mode-icon  { font-size: 36px; line-height: 1; }
-.home-mode-label { font-size: 20px; font-weight: 800; letter-spacing: -0.3px; }
-.home-mode-desc  { font-size: 12px; color: rgba(255,255,255,0.45); font-weight: 400; }
+.home-mode-btn:hover { border-color: var(--paper-38); }
+/* One accent bar per mode is enough to tell them apart; two fully tinted
+   panels made the page look like a pair of alert boxes. */
+.home-mode-solo  { border-left: 5px solid var(--accent); }
+.home-mode-multi { border-left: 5px solid var(--card-blue); }
+.home-mode-icon  { display: none; }
+.home-mode-label { font-family: var(--font-display); font-size: 21px; line-height: 1.1; }
+.home-mode-desc  { font-size: 12px; color: var(--paper-38); font-weight: 600; }
 
 /* ── LOBBY / MULTIPLAYER SCREEN ── */
 .lobby-screen {
@@ -833,16 +922,19 @@ html, body, #root {
   -webkit-overflow-scrolling: touch; /* iOS momentum scroll */
 }
 .lobby-title {
-  font-size: 28px; font-weight: 900;
-  color: var(--accent); letter-spacing: -0.5px;
+  font-family: var(--font-display);
+  font-size: 30px; color: var(--paper); letter-spacing: 0;
+  text-shadow: 3px 3px 0 var(--accent-dark);
 }
 .lobby-room-code {
-  color: white; background: rgba(255,255,255,0.13);
-  border-radius: 8px; padding: 2px 10px;
-  letter-spacing: 5px; font-size: 26px;
+  font-family: var(--font-display);
+  color: var(--accent); background: var(--wood-deep);
+  border: 1px solid var(--paper-20);
+  border-radius: 4px; padding: 4px 12px;
+  letter-spacing: 6px; font-size: 26px; text-shadow: none;
 }
 .lobby-subtitle {
-  font-size: 12px; color: rgba(255,255,255,0.4);
+  font-size: 12px; color: rgba(246,234,210,0.4);
   margin-top: -10px; text-align: center;
 }
 .lobby-section {
@@ -857,11 +949,11 @@ html, body, #root {
 .lobby-divider {
   width: 100%; max-width: 380px;
   display: flex; align-items: center; gap: 12px;
-  color: rgba(255,255,255,0.28); font-size: 12px;
+  color: rgba(246,234,210,0.28); font-size: 12px;
 }
 .lobby-divider::before, .lobby-divider::after {
   content: ''; flex: 1; height: 1px;
-  background: rgba(255,255,255,0.12);
+  background: rgba(246,234,210,0.12);
 }
 
 /* Faction picker */
@@ -870,48 +962,65 @@ html, body, #root {
   gap: 10px; margin-top: 6px;
 }
 .faction-btn {
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
-  padding: 14px 10px; border-radius: 14px;
-  border: 2.5px solid transparent;
-  background: var(--faction-bg, #555); color: var(--faction-text, white);
-  cursor: pointer; opacity: 0.72;
-  transition: opacity 0.12s, transform 0.12s, border-color 0.12s;
-  font-weight: 700;
+  display: flex; flex-direction: column; align-items: center; gap: 7px;
+  padding: 14px 10px; border-radius: 4px;
+  border: 1.5px solid var(--paper-20);
+  background: var(--wood-light);
+  color: var(--paper);
+  cursor: pointer;
+  transition: border-color 0.12s, background-color 0.12s;
+  font-weight: 700; min-height: 88px; justify-content: center;
 }
-.faction-btn:active { transform: scale(0.96); }
+.faction-btn:hover:not(:disabled) { border-color: var(--paper-38); }
 .faction-btn.faction-selected {
-  opacity: 1; border-color: white;
-  box-shadow: 0 0 0 1px rgba(255,255,255,0.3), 0 6px 20px rgba(0,0,0,0.4);
+  border-color: var(--faction-bg);
+  background: var(--wood-deep);
+  box-shadow: inset 0 0 0 3px var(--faction-bg);
 }
 .faction-btn.faction-taken {
-  opacity: 0.28; cursor: not-allowed; filter: grayscale(40%);
+  opacity: 0.3; cursor: not-allowed;
 }
-.faction-symbol { font-size: 28px; line-height: 1; }
-.faction-name   { font-size: 13px; font-weight: 800; letter-spacing: 0.3px; }
+/* The deck symbol sits on its own painted disc in the deck's color -- the
+   same relationship the symbol has to the card back in the real game. */
+.faction-symbol {
+  color: var(--paper);
+  background: var(--faction-bg, #555);
+  border-radius: 50%;
+  padding: 7px;
+  box-sizing: content-box;
+  width: 30px; height: 30px;
+}
+.faction-name {
+  font-family: var(--font-display); font-size: 13px; letter-spacing: 0.02em;
+}
 
 /* Lobby player list */
 .lobby-players { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+/* Rows on a list, not a stack of little cards. */
 .lobby-player-row {
-  display: flex; align-items: center; gap: 10px;
-  background: rgba(255,255,255,0.06); border-radius: 12px;
-  padding: 10px 14px; border: 1px solid rgba(255,255,255,0.08);
+  display: flex; align-items: center; gap: 12px;
+  background: transparent; border-radius: 0;
+  padding: 9px 2px; border: 0; border-bottom: 1px solid var(--paper-12);
 }
+.lobby-players > .lobby-player-row:last-child { border-bottom: 0; }
 .lobby-player-empty { opacity: 0.4; }
+/* Painted disc, matching the faction picker. */
 .lobby-player-faction {
-  width: 38px; height: 38px; border-radius: 10px;
+  width: 34px; height: 34px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 20px; flex-shrink: 0;
-  border: 1.5px solid rgba(255,255,255,0.2);
+  font-size: 15px; font-weight: 800; flex-shrink: 0;
+  border: 0;
 }
 .lobby-player-name { font-size: 15px; font-weight: 700; flex: 1; }
 .lobby-player-tags { display: flex; gap: 6px; }
 .lobby-tag {
-  font-size: 10px; font-weight: 800; text-transform: uppercase;
-  letter-spacing: 0.5px; padding: 2px 7px; border-radius: 20px;
-  background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.6);
+  font-size: 9px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.12em; padding: 2px 6px; border-radius: 3px;
+  background: transparent; color: var(--paper-38);
+  border: 1px solid var(--paper-20);
 }
-.lobby-tag-host { background: rgba(255,193,7,0.2); color: var(--gold); }
-.lobby-tag-you  { background: rgba(102,187,106,0.2); color: var(--accent); }
+.lobby-tag-host { color: var(--gold); border-color: rgba(232,179,60,0.45); }
+.lobby-tag-you  { color: var(--accent); border-color: rgba(224,135,58,0.5); }
 
 /* Join button next to code input */
 .lobby-action-btn {
@@ -926,7 +1035,7 @@ html, body, #root {
 /* Waiting for host */
 .lobby-waiting {
   display: flex; align-items: center; gap: 10px;
-  justify-content: center; color: rgba(255,255,255,0.5);
+  justify-content: center; color: rgba(246,234,210,0.5);
   font-size: 14px; font-weight: 600; padding: 14px;
 }
 .lobby-waiting-dot {
@@ -942,15 +1051,15 @@ html, body, #root {
 /* ── LOBBY CHAT ── */
 .lobby-chat {
   width: 100%; max-width: 380px;
-  background: rgba(0,0,0,0.25);
+  background: rgba(29,16,9,0.25);
   border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid rgba(246,234,210,0.08);
   display: flex; flex-direction: column;
   overflow: hidden;
 }
 .lobby-chat-title {
   font-size: 11px; font-weight: 700;
-  color: rgba(255,255,255,0.4);
+  color: rgba(246,234,210,0.4);
   text-transform: uppercase; letter-spacing: 0.6px;
   padding: 10px 14px 4px;
 }
@@ -961,13 +1070,13 @@ html, body, #root {
   display: flex; flex-direction: column; gap: 5px;
   /* Custom scrollbar */
   scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.15) transparent;
+  scrollbar-color: rgba(246,234,210,0.15) transparent;
 }
 .chat-messages::-webkit-scrollbar { width: 4px; }
 .chat-messages::-webkit-scrollbar-track { background: transparent; }
-.chat-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+.chat-messages::-webkit-scrollbar-thumb { background: rgba(246,234,210,0.15); border-radius: 2px; }
 .chat-empty {
-  color: rgba(255,255,255,0.22); font-size: 12px;
+  color: rgba(246,234,210,0.22); font-size: 12px;
   text-align: center; padding: 14px 0;
 }
 .chat-message {
@@ -980,23 +1089,23 @@ html, body, #root {
 }
 .chat-msg-name.chat-msg-me { color: #64b5f6; }
 .chat-msg-text {
-  color: rgba(255,255,255,0.82);
+  color: rgba(246,234,210,0.82);
   word-break: break-word;
 }
 .chat-input-row {
   display: flex; gap: 6px;
   padding: 8px 10px;
-  border-top: 1px solid rgba(255,255,255,0.06);
+  border-top: 1px solid rgba(246,234,210,0.06);
 }
 .chat-input {
   flex: 1;
-  background: rgba(255,255,255,0.08);
-  border: 1.5px solid rgba(255,255,255,0.14);
+  background: rgba(246,234,210,0.08);
+  border: 1.5px solid rgba(246,234,210,0.14);
   border-radius: 10px;
   color: white; font-size: 14px;
   padding: 8px 12px; outline: none;
 }
-.chat-input::placeholder { color: rgba(255,255,255,0.28); }
+.chat-input::placeholder { color: rgba(246,234,210,0.28); }
 .chat-input:focus { border-color: var(--accent); }
 .chat-send-btn {
   background: var(--accent); color: var(--text-dark);
@@ -1006,3 +1115,33 @@ html, body, #root {
 }
 .chat-send-btn:active { transform: scale(0.95); }
 .chat-send-btn:disabled { opacity: 0.38; cursor: not-allowed; transform: none; }
+
+/* ── HUB BACK LINK ──
+   Was an inline glassy pill (translucent white + backdrop-blur). Now a painted
+   wooden tab, matching everything else. */
+.hub-back-link {
+  position: fixed; top: 10px; left: 10px; z-index: 900;
+  padding: 6px 12px; border-radius: 4px;
+  background: var(--wood-light);
+  border: 1px solid var(--paper-20);
+  color: var(--paper-60);
+  font-size: 13px; font-weight: 700; text-decoration: none;
+  transition: color 0.12s, border-color 0.12s;
+}
+.hub-back-link:hover { color: var(--paper); border-color: var(--paper-38); }
+
+/* ── RECONNECT OVERLAY ── */
+.reconnect-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(29,16,9,0.86);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px;
+}
+.reconnect-star { animation: reconnectTurn 3.5s linear infinite; }
+@keyframes reconnectTurn { to { transform: rotate(360deg); } }
+.reconnect-title {
+  font-family: var(--font-display); font-size: 22px; color: var(--paper);
+}
+.reconnect-note {
+  font-size: 13px; color: var(--paper-38); text-align: center; max-width: 260px;
+}

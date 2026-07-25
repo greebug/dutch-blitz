@@ -1,50 +1,9 @@
 import React from 'react';
 import { Card, CardColor } from '../game/types';
+import { BarnStar, BoyIcon, GirlIcon } from './icons';
 
 function isBoyColor(color: CardColor) {
   return color === 'red' || color === 'blue';
-}
-
-// Male bathroom-sign icon
-function BoyIcon({ size }: { size: number }) {
-  const h = Math.round(size * 1.45);
-  return (
-    <svg width={size} height={h} viewBox="0 0 40 58" fill="currentColor">
-      {/* Head */}
-      <circle cx="20" cy="8" r="8" />
-      {/* Neck */}
-      <rect x="17" y="16" width="6" height="4" />
-      {/* Torso */}
-      <rect x="13" y="20" width="14" height="13" rx="2" />
-      {/* Left arm */}
-      <rect x="2" y="21" width="11" height="5" rx="2.5" transform="rotate(-12 7 23)" />
-      {/* Right arm */}
-      <rect x="27" y="21" width="11" height="5" rx="2.5" transform="rotate(12 33 23)" />
-      {/* Left leg */}
-      <rect x="13" y="31" width="6" height="19" rx="3" />
-      {/* Right leg */}
-      <rect x="21" y="31" width="6" height="19" rx="3" />
-    </svg>
-  );
-}
-
-// Female bathroom-sign icon
-function GirlIcon({ size }: { size: number }) {
-  const h = Math.round(size * 1.45);
-  return (
-    <svg width={size} height={h} viewBox="0 0 40 58" fill="currentColor">
-      {/* Head */}
-      <circle cx="20" cy="8" r="8" />
-      {/* Bodice */}
-      <rect x="16" y="16" width="8" height="6" rx="1" />
-      {/* Dress — wide triangle */}
-      <polygon points="5,57 35,57 28,20 12,20" />
-      {/* Left arm */}
-      <rect x="2" y="22" width="10" height="5" rx="2.5" transform="rotate(-12 7 24)" />
-      {/* Right arm */}
-      <rect x="28" y="22" width="10" height="5" rx="2.5" transform="rotate(12 33 24)" />
-    </svg>
-  );
 }
 
 interface CardDisplayProps {
@@ -71,7 +30,9 @@ export function CardDisplay({
   const isSmall = size === 'small';
   const isGhost = size === 'ghost';
   const boy = isBoyColor(card.color);
-  const iconSize = isSmall ? 13 : 26;
+  // The icons are square now (the old ones were 1:1.45 standing figures), so
+  // the small size can go up a little without crowding the corner.
+  const iconSize = isSmall ? 15 : 28;
 
   const sizeStyle: React.CSSProperties = isSmall
     ? { width: 34, height: 48, borderRadius: 6 }
@@ -119,7 +80,13 @@ export function CardBack({
 }) {
   const sizeStyle: React.CSSProperties =
     size === 'small' ? { width: 34, height: 48, borderRadius: 6 } : {};
-  return <div className="card card-back" style={{ position: 'relative', ...sizeStyle, ...style }} />;
+  return (
+    <div className="card card-back" style={{ position: 'relative', ...sizeStyle, ...style }}>
+      {/* A barn star, the way a real deck has a design on its back rather than
+          a blank rectangle. */}
+      <BarnStar size={size === 'small' ? 20 : 38} className="card-back-star" />
+    </div>
+  );
 }
 
 export function EmptySlot({

@@ -1,5 +1,6 @@
 import React from 'react';
-import { CardColor, DutchPile } from '../game/types';
+import { DutchPile } from '../game/types';
+import { FactionIcon } from './icons';
 
 interface Props {
   piles: DutchPile[];
@@ -13,10 +14,6 @@ const COLOR_BG: Record<string, string> = {
 };
 const COLOR_TEXT: Record<string, string> = {
   red: 'white', blue: 'white', green: 'white', yellow: 'white',
-};
-
-const FACTION_EMOJI: Record<CardColor, string> = {
-  red: '🚗', blue: '🚜', green: '⛽', yellow: '🪣',
 };
 
 const TOTAL_SLOTS = 16;
@@ -57,9 +54,13 @@ export function CenterPiles({ piles, highlightPileId, showNewPileTarget, highlig
                   }}
                   data-dutch-pile-id={pile.id}
                 >
-                  <span style={{ fontSize: 20, transform: 'rotate(180deg)', display: 'inline-block', lineHeight: 1 }}>
-                    {FACTION_EMOJI[pile.completedByFaction]}
-                  </span>
+                  {/* Upside-down, matching the real game: a finished pile is
+                      flipped over and claimed by whoever laid the ten. */}
+                  <FactionIcon
+                    color={pile.completedByFaction}
+                    size={22}
+                    style={{ transform: 'rotate(180deg)', color: COLOR_BG[pile.completedByFaction] }}
+                  />
                 </div>
               );
             }

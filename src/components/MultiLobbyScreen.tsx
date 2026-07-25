@@ -3,14 +3,15 @@ import { CardColor, BotDifficulty } from '../game/types';
 import { LobbyPlayer, LobbyState, RoomConfig, ChatMessage, AuthInfo } from '../hooks/useMultiplayer';
 import { Leaderboard } from './Leaderboard';
 import { unlockAudio, startMusic } from '../hooks/useSounds';
+import { FactionIcon, FACTION_LABEL } from './icons';
 
 // ─── Faction config ───────────────────────────────────────────────────────────
 
-const FACTIONS: { color: CardColor; label: string; symbol: string; bg: string; text: string }[] = [
-  { color: 'red',    label: 'Carriage', symbol: '🚗', bg: '#c62828', text: 'white' },
-  { color: 'blue',   label: 'Plow',     symbol: '🚜', bg: '#1565c0', text: 'white' },
-  { color: 'green',  label: 'Pump',     symbol: '⛽', bg: '#43a047', text: 'white' },
-  { color: 'yellow', label: 'Pail',     symbol: '🪣', bg: '#b07b00', text: 'white' },
+const FACTIONS: { color: CardColor; label: string; bg: string; text: string }[] = [
+  { color: 'red',    label: FACTION_LABEL.red,    bg: 'var(--card-red)', text: 'white' },
+  { color: 'blue',   label: FACTION_LABEL.blue,   bg: 'var(--card-blue)', text: 'white' },
+  { color: 'green',  label: FACTION_LABEL.green,  bg: 'var(--card-green)', text: 'white' },
+  { color: 'yellow', label: FACTION_LABEL.yellow, bg: 'var(--card-yellow)', text: 'white' },
 ];
 
 const FACTION_CHAT_COLORS: Record<CardColor, string> = {
@@ -797,7 +798,7 @@ export function MultiLobbyScreen({
                   className="lobby-player-faction"
                   style={{ background: factionBg(p.faction), color: factionText(p.faction) }}
                 >
-                  {p.faction ? (FACTIONS.find(f => f.color === p.faction)?.symbol ?? '?') : '?'}
+                  {p.faction ? <FactionIcon color={p.faction} size={20} /> : '?'}
                 </div>
                 <span className="lobby-player-name">{p.name}</span>
                 <span className="lobby-player-tags">
@@ -833,7 +834,7 @@ export function MultiLobbyScreen({
                   onClick={() => !taken && onChangeFaction(f.color)}
                   disabled={taken}
                 >
-                  <span className="faction-symbol">{f.symbol}</span>
+                  <FactionIcon color={f.color} size={30} className="faction-symbol" />
                   <span className="faction-name">{f.label}</span>
                 </button>
               );
