@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CheckIcon } from './icons';
 import { CardColor, PlayerState, CardSource } from '../game/types';
 import { CardDisplay, CardBack, EmptySlot } from './DraggableCard';
 
@@ -218,7 +217,7 @@ export function PlayerArea({ player, onDragStart, onDrawWood, dragSource, highli
                   fontSize: 26, color: '#66bb6a',
                 }}
               >
-                <CheckIcon size={15} />
+                ✓
               </div>
             )}
           </div>

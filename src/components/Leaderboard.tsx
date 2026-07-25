@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { TrophyIcon, MedalIcon } from './icons';
 
 interface SpeedEntry   { player_name: string; secs_per_play: number; cards_played: number; }
 interface AvgEntry     { player_name: string; avg_secs: number; total_cards: number; }
@@ -13,15 +12,7 @@ interface LeaderboardData {
   elo:      EloEntry[];
 }
 
-function Rank({ i }: { i: number }) {
-  if (i > 2) return <span className="rank-plain">{i + 1}</span>;
-  return (
-    <span className="rank-medal">
-      <MedalIcon rank={i + 1} size={22} />
-      <span className="rank-medal-num">{i + 1}</span>
-    </span>
-  );
-}
+const MEDALS = ['🥇', '🥈', '🥉'];
 
 function fmt(secs: number) {
   return secs.toFixed(1) + 's/card';
@@ -97,7 +88,7 @@ export function Leaderboard() {
   return (
     <div style={containerStyle}>
       <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 1, color: 'rgba(255,255,255,0.45)', marginBottom: 10, textTransform: 'uppercase' }}>
-        <TrophyIcon size={13} /> Leaderboard
+        🏆 Leaderboard
       </div>
 
       <div style={tabBarStyle}>
@@ -117,7 +108,7 @@ export function Leaderboard() {
         data.speed.length === 0 ? empty :
         data.speed.map((e, i) => (
           <div key={i} style={rowStyle(i)}>
-            <Rank i={i} />
+            <span style={{ fontSize: 18, width: 24 }}>{MEDALS[i]}</span>
             <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,0.88)' }}>
               {e.player_name}
             </span>
@@ -132,7 +123,7 @@ export function Leaderboard() {
         data.avgSpeed.length === 0 ? empty :
         data.avgSpeed.map((e, i) => (
           <div key={i} style={rowStyle(i)}>
-            <Rank i={i} />
+            <span style={{ fontSize: 18, width: 24 }}>{MEDALS[i]}</span>
             <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,0.88)' }}>
               {e.player_name}
             </span>
@@ -147,7 +138,7 @@ export function Leaderboard() {
         data.wins.length === 0 ? empty :
         data.wins.map((e, i) => (
           <div key={i} style={rowStyle(i)}>
-            <Rank i={i} />
+            <span style={{ fontSize: 18, width: 24 }}>{MEDALS[i]}</span>
             <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,0.88)' }}>
               {e.display_name}
             </span>
@@ -172,7 +163,7 @@ export function Leaderboard() {
         !data.elo || data.elo.length === 0 ? empty :
         data.elo.map((e, i) => (
           <div key={i} style={rowStyle(i)}>
-            <Rank i={i} />
+            <span style={{ fontSize: 18, width: 24 }}>{MEDALS[i] ?? `${i + 1}.`}</span>
             <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,0.88)' }}>
               {e.display_name}
             </span>

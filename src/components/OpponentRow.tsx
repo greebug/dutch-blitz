@@ -1,6 +1,5 @@
 import React from 'react';
 import { PlayerState, Card } from '../game/types';
-import { CheckIcon } from './icons';
 
 interface Props {
   player: PlayerState;
@@ -47,7 +46,7 @@ export function OpponentDisplay({ player, variant }: Props) {
               <div className="opp-blitz-badge">{blitzCount}</div>
             </div>
           ) : (
-            <div className="opp-blitz-empty" style={{ width: 26, height: 36 }}><CheckIcon size={13} /></div>
+            <div className="opp-blitz-empty" style={{ width: 26, height: 36 }}>✓</div>
           )}
         </div>
         {/* Wood active top */}
@@ -80,7 +79,7 @@ export function OpponentDisplay({ player, variant }: Props) {
               <div className="opp-blitz-badge">{blitzCount}</div>
             </>
           ) : (
-            <div className="opp-blitz-empty" style={{ width: 32, height: 44 }}><CheckIcon size={16} /></div>
+            <div className="opp-blitz-empty" style={{ width: 32, height: 44 }}>✓</div>
           )}
         </div>
       </div>
