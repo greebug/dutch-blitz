@@ -3,7 +3,7 @@ import { CardColor, BotDifficulty } from '../game/types';
 import { LobbyPlayer, LobbyState, RoomConfig, ChatMessage, AuthInfo } from '../hooks/useMultiplayer';
 import { Leaderboard } from './Leaderboard';
 import { unlockAudio, startMusic } from '../hooks/useSounds';
-import { FactionIcon, FACTION_LABEL } from './icons';
+import { FactionIcon, FACTION_LABEL, BoyIcon, GirlIcon } from './icons';
 
 // ─── Faction config ───────────────────────────────────────────────────────────
 
@@ -247,9 +247,26 @@ export function MultiLobbyScreen({
           Cards go 1→10 in the <strong>center piles</strong> (shared by all players), matched by color.
           You can play from your Blitz pile, Post piles, or the top Wood card onto a center pile.
         </p>
+        <p style={{ margin: '0 0 4px' }}>
+          You can also move cards between your own Post piles. A Post pile counts{' '}
+          <strong>down</strong> — and every card must <strong>alternate boy and girl</strong>,
+          which is what the mark in the card&apos;s corner tells you:
+        </p>
+        <p
+          style={{
+            margin: '0 0 4px', display: 'flex', alignItems: 'center',
+            gap: 6, flexWrap: 'wrap', fontSize: 13,
+          }}
+        >
+          <BoyIcon size={16} style={{ verticalAlign: '-0.18em' }} />
+          <span>boy — Carriage (red) and Plow (blue)</span>
+          <span style={{ opacity: 0.4 }}>·</span>
+          <GirlIcon size={16} style={{ verticalAlign: '-0.18em' }} />
+          <span>girl — Pump (green) and Pail (yellow)</span>
+        </p>
         <p style={{ margin: '0 0 12px' }}>
-          You can also move cards between your own Post piles (descending order, any color).
-          Tap a card, then tap the destination to move it.
+          So an 8 with a boy mark only takes a 7 with a girl mark, and so on. Tap a
+          card, then tap the destination to move it.
         </p>
 
         <div style={{ fontWeight: 700, color: '#ffd54f', marginBottom: 4 }}>🪵 Wood Pile</div>

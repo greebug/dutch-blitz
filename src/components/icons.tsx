@@ -158,19 +158,21 @@ export function BoyIcon({ size = 24, className, style }: IconProps) {
       aria-hidden="true"
       focusable="false"
     >
-      {/* shoulders and shirt */}
-      <path d="M7 48c0-8.5 7.6-13 17-13s17 4.5 17 13z" />
-      {/* suspender straps -- gone by 15px, character at 28px */}
-      <path d="M18.6 36.2 21 48h-2.9l-2.2-10.6zM29.4 36.2 27 48h2.9l2.2-10.6z" fill={DETAIL} opacity="0.3" />
+      {/* shoulders */}
+      <path d="M6 48c0-8.6 8-13.2 18-13.2S42 39.4 42 48z" />
+      {/* suspender straps, converging toward the waist */}
+      <path d="M16.2 35.2h3.1L20.4 48h-3.1zM31.8 35.2h-3.1L27.6 48h3.1z" fill={DETAIL} opacity="0.3" />
       {/* head */}
-      <circle cx="24" cy="25.5" r="9" />
-      {/* hair fringe under the brim -- a bowl cut, the actual Plain haircut */}
-      <path d="M15.4 22.5a9 9 0 0 1 17.2 0z" fill={DETAIL} opacity="0.3" />
+      <circle cx="24" cy="26" r="9.2" />
+      {/* bowl-cut fringe. Bounded by the head circle on both sides, which is
+          why it is arcs and not a rect -- a rect would spill onto the card. */}
+      <path d="M17.8 19.2A9.2 9.2 0 0 0 15.02 24h17.96A9.2 9.2 0 0 0 30.2 19.2z" fill={DETAIL} opacity="0.3" />
+      {/* crown, then the band, then the brim over the band bottom edge. That
+          order is what makes the band read as a band and not a hat stripe. */}
+      <path d="M14 15.6V11.6a10 6 0 0 1 20 0v4z" />
+      <path d="M13.9 13.2h20.2v2.6H13.9z" fill={DETAIL} opacity="0.3" />
       {/* flat broad brim: the whole point of the silhouette */}
-      <rect x="2.5" y="14" width="43" height="4.6" rx="2.3" />
-      {/* crown, with a band where it meets the brim */}
-      <path d="M14 14V9.8C14 6.3 18.5 4 24 4s10 2.3 10 5.8V14z" />
-      <path d="M13.6 12.2h20.8V14H13.6z" fill={DETAIL} opacity="0.3" />
+      <rect x="2.2" y="15.6" width="43.6" height="4.6" rx="2.3" />
     </svg>
   );
 }
@@ -188,21 +190,22 @@ export function GirlIcon({ size = 24, className, style }: IconProps) {
       focusable="false"
     >
       {/* shoulders */}
-      <path d="M7 48c0-8.5 7.6-13 17-13s17 4.5 17 13z" />
-      {/* cape collar -- the pointed shoulder cape of Plain dress */}
-      <path d="M24 36 32.5 48h-17z" fill={DETAIL} opacity="0.3" />
+      <path d="M6 48c0-8.6 8-13.2 18-13.2S42 39.4 42 48z" />
+      {/* shoulder cape, then the collar over its point */}
+      <path d="M24 37.4 34 48H14z" fill={DETAIL} opacity="0.3" />
+      <path d="M16.6 34.2h14.8l-2.1 4.6-5.3-2.6-5.3 2.6z" />
+      {/* Prayer covering: one arch, drawn as the ring between an outer radius
+          of 18.9 and an inner of 11 about the head centre. The side panels are
+          that same ring continued past the ears and cut on a slant. */}
+      <path d="M6.92 33.4A18.9 18.9 0 1 1 41.08 33.4L33.53 30.8A11 11 0 1 0 14.47 30.8z" />
       {/* head */}
-      <circle cx="24" cy="25.5" r="9" />
-      {/* centre-parted hair, the way it shows at the temples under a covering */}
-      <path
-        d="M15.6 22.6a9 9 0 0 1 7-6.4v6.4h-1.9a4.6 4.6 0 0 0-4 3.4zM32.4 22.6a9 9 0 0 0-7-6.4v6.4h1.9a4.6 4.6 0 0 1 4 3.4z"
-        fill={DETAIL}
-        opacity="0.3"
-      />
-      {/* prayer covering: a thick dome over and behind the head, open at the
-          face. Reads as a curve at any size -- the opposite shape to the boy's
-          hard horizontal brim, which is what keeps them apart at 15px. */}
-      <path d="M5.5 27a18.5 18.5 0 0 1 37 0v3.2a2.6 2.6 0 0 1-2.6 2.6h-4.6A12 12 0 1 0 12.7 32.8H8.1a2.6 2.6 0 0 1-2.6-2.6z" />
+      <circle cx="24" cy="25.3" r="9.25" />
+      {/* Hair: a cap on the same centre as the covering, radius 11.3 against
+          the covering inner edge of 11. The 0.3 of overlap is deliberate --
+          matched radii leave an antialiasing seam that shows the card through. */}
+      <path d="M12.86 23.4A11.3 11.3 0 0 1 35.14 23.4z" fill={DETAIL} opacity="0.3" />
+      {/* centre part */}
+      <path d="M21.8 14.4h4.4L24 21z" />
     </svg>
   );
 }
