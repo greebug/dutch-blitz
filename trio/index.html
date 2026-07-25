@@ -16,26 +16,70 @@
 
       HAND-EDIT WARNING: this directory is a *built* Trio bundle checked into
       the repo, not source -- Trio's source lives elsewhere. Rebuilding and
-      re-copying the bundle will drop this link unless it is added again (or,
-      better, added to Trio's own source and rebuilt).
+      re-copying the bundle will drop this link (and the script below) unless
+      re-added, or -- better -- added to Trio's own source and rebuilt.
 
-      It sits outside #root deliberately, so React never touches it. Bottom-left
-      because app-header already owns the top-left with the Trio brand, and
-      styled for Trio's light theme rather than the dark pills the other games
-      use.
+      It sits outside #root deliberately, so React never touches it: React
+      only reconciles nodes it created inside #root, but manually mutating
+      *inside* a live React tree (e.g. inserting this as a child of
+      .app-header) risks a "node before which the new node is to be inserted
+      is not a child of this node" crash the next time React re-renders that
+      subtree. Sitting outside #root as a fixed-position overlay avoids that
+      entirely.
+
+      Positioned by script, not a hardcoded pixel offset: .app-header is
+      `flex-wrap`, so its height changes when the nav row wraps under the
+      brand on narrow screens, and a fixed top would either overlap the nav
+      or leave a gap depending on viewport width. This measures the real
+      header at runtime and sits just below it, aligned under the brand --
+      "directly under the logo," as requested -- on every width. The header
+      is `position: sticky; top: 0`, so its viewport position is stable
+      without a scroll listener; a resize listener covers the rest.
     -->
     <a
+      id="hub-back-link"
       href="/"
       style="
-        position: fixed; bottom: 14px; left: 14px; z-index: 900;
+        position: fixed; top: 60px; left: 20px; z-index: 900;
         padding: 7px 13px; border-radius: 999px;
         background: rgba(255, 255, 255, 0.92);
         border: 1px solid rgba(40, 30, 20, 0.18);
         box-shadow: 0 2px 10px rgba(40, 30, 20, 0.12);
         color: #4a3f33; font-size: 13px; font-weight: 600;
         font-family: system-ui, sans-serif; text-decoration: none;
+        visibility: hidden;
       "
       >← All games</a
     >
+    <script>
+      (function () {
+        var link = document.getElementById('hub-back-link');
+        // No fade-in transition on purpose: a mid-transition opacity value
+        // depends on real elapsed time between paints, which a backgrounded
+        // or throttled tab can freeze indefinitely -- this toggles
+        // `visibility` as a plain synchronous property instead, with no
+        // window where the link is visible but still mispositioned.
+        function place() {
+          var brand = document.querySelector('.app-header__brand');
+          var header = document.querySelector('.app-header');
+          if (!brand || !header) return false;
+          var b = brand.getBoundingClientRect();
+          var h = header.getBoundingClientRect();
+          if (h.height === 0) return false; // header not laid out yet
+          link.style.top = h.bottom + 8 + 'px';
+          link.style.left = b.left + 'px';
+          link.style.visibility = 'visible';
+          return true;
+        }
+        window.addEventListener('resize', place);
+        // Trio mounts its React tree asynchronously, so the header may not
+        // exist on the first tick -- retry briefly rather than assuming one
+        // attempt is enough.
+        var tries = 0;
+        var poll = setInterval(function () {
+          if (place() || ++tries > 40) clearInterval(poll);
+        }, 50);
+      })();
+    </script>
   </body>
 </html>
