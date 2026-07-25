@@ -58,7 +58,28 @@ arc (bonnet). Two shapes that stay distinct as a blur. That was measured, not
 assumed: rasterized at 15px, **33% of the ink differs** between them.
 
 If you redraw them, re-run that test. Anything under ~25% is too similar to tell
-apart mid-game. The current pair measures 28.1% at 15px, 30.5% at 28px.
+apart mid-game.
+
+**The current pair is Jesse's own artwork**, vectorized and committed as `boy.svg`
+and `girl.svg` at the repo root. `icons.tsx` uses that path data verbatim in its
+native 1784x882 space and only picks a viewBox cropping to one 780x780 card
+(`75.2 71 780 780` / `936.3 71 780 780`). Don't hand-tidy those paths, and don't
+re-trace the artwork by eye — a pass that did exactly that produced visibly rough
+shapes, which is why the vectors exist.
+
+That crop is validated, not guessed: it puts the boy's brim at 90.6% of the icon
+box against the previous hand-drawn icons' 90.8%, with the bust flush to the
+bottom edge, so the figures land where the card-corner spacing is already tuned.
+
+**Open trade-off, measured:** this pair runs **23.3% at 15px** and 26.8% at 28px,
+against the previous pair's 28.1% / 30.5%. So at the 15px small-card size it sits
+slightly UNDER the ~25% guideline above. The shapes are still a hard horizontal
+brim versus a dome, but the girl's covering now flares down beside the face, which
+brings her outline closer to the boy's brim-plus-shoulders mass. Measured across
+sizes: 13px 25.8, 15px 23.3, 16px 24.1, 17px 24.8, 18px 27.3, 28px 26.8. If it
+ever reads as too similar in play, the one-line lever is `iconSize` in
+`DraggableCard.tsx` — 15 -> 18 buys 4 points. That is a change to tuned card
+geometry, so it needs Jesse, not a unilateral edit.
 
 **Interior detail must be ink, never a faded `currentColor`.** The figures are
 solid `currentColor` (white, on a colored card), so a detail shape drawn in
