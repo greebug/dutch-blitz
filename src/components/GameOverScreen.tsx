@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { GameState, GameAction } from '../game/types';
 import { loadStats, recordRoundSpeed } from '../game/stats';
+import { StopwatchIcon, BarnStar, PennantIcon } from './icons';
 
 interface Props {
   state: GameState;
@@ -53,7 +54,7 @@ export function GameOverScreen({ state, dispatch, myPlayerId }: Props) {
     <div className="gameover-screen">
       <div className="gameover-headline">
         {isGameOver
-          ? gameWinnerId === human.id ? '🏆 You Win!' : `${gameWinnerPlayer?.name ?? 'Someone'} Wins!`
+          ? gameWinnerId === human.id ? 'You Win!' : `${gameWinnerPlayer?.name ?? 'Someone'} Wins!`
           : 'Nice play!'}
       </div>
       <div className="gameover-round">
@@ -82,7 +83,7 @@ export function GameOverScreen({ state, dispatch, myPlayerId }: Props) {
               <tr key={p.id} className={`score-row ${p.id === human?.id ? 'winner-row' : ''}`}>
                 <td className="rank-cell">{i + 1}</td>
                 <td className="name-cell">
-                  {isWinner && <span style={{ marginRight: 4 }}>⚡</span>}
+                  {isWinner && <PennantIcon size={12} style={{ marginRight: 4, verticalAlign: '-1px' }} />}
                   {p.name}
                 </td>
                 <td style={{ color: '#a5d6a7', textAlign: 'center' }}>+{cards}</td>
@@ -111,7 +112,7 @@ export function GameOverScreen({ state, dispatch, myPlayerId }: Props) {
         <div className="stats-title">Your Statistic:</div>
 
         <div className="stat-row">
-          <span className="stat-icon">⏱</span>
+          <span className="stat-icon"><StopwatchIcon size={16} /></span>
           <span className="stat-label">Speed:</span>
           <div className="stat-value-group">
             <span className="stat-value">{humanPlayed > 0 ? secondsPerPlay : '—'}</span>
@@ -125,7 +126,7 @@ export function GameOverScreen({ state, dispatch, myPlayerId }: Props) {
         </div>
 
         <div className="stat-row">
-          <span className="stat-icon">⏱</span>
+          <span className="stat-icon"><StopwatchIcon size={16} /></span>
           <span className="stat-label">Avg Speed:</span>
           <div className="stat-value-group">
             <span className="stat-value">
@@ -137,7 +138,7 @@ export function GameOverScreen({ state, dispatch, myPlayerId }: Props) {
 
         {humanStats.bestSpeed !== null && (
           <div className="stat-row">
-            <span className="stat-icon stat-star">★</span>
+            <span className="stat-icon stat-star"><BarnStar size={16} /></span>
             <span className="stat-label">Best:</span>
             <div className="stat-value-group">
               <span className="stat-value">{humanStats.bestSpeed}</span>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { PersonIcon, LinkIcon } from './icons';
 
 interface Props {
   onSolo: () => void;
@@ -13,13 +14,13 @@ export function HomeScreen({ onSolo, onMulti }: Props) {
 
       <div className="home-modes">
         <button className="home-mode-btn home-mode-solo" onClick={onSolo}>
-          <span className="home-mode-icon">🤖</span>
+          <span className="home-mode-icon"><PersonIcon size={28} /></span>
           <span className="home-mode-label">Play vs Bots</span>
           <span className="home-mode-desc">Single player · local game</span>
         </button>
 
         <button className="home-mode-btn home-mode-multi" onClick={onMulti}>
-          <span className="home-mode-icon">🌐</span>
+          <span className="home-mode-icon"><LinkIcon size={28} /></span>
           <span className="home-mode-label">Play Online</span>
           <span className="home-mode-desc">Multiplayer · same WiFi or internet</span>
         </button>

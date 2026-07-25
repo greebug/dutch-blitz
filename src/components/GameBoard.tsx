@@ -7,6 +7,7 @@ import { OpponentDisplay } from './OpponentRow';
 import { CenterPiles } from './CenterPiles';
 import { PlayerArea } from './PlayerArea';
 import { GameOverScreen } from './GameOverScreen';
+import { PauseIcon, PlayIcon, PhoneRotateIcon } from './icons';
 import { CardDisplay } from './DraggableCard';
 
 interface DragState {
@@ -346,7 +347,7 @@ export function GameBoard({ state, dispatch, myPlayerId }: Props) {
     >
       {/* Top bar */}
       <div className="top-bar">
-        <div className="top-bar-round">Round {state.roundNumber}</div>
+        <div className="top-bar-round">Round&nbsp;{state.roundNumber}</div>
         <div className="top-bar-scores">
           {state.players.map(p => (
             <div key={p.id} className="top-bar-score">
@@ -366,7 +367,7 @@ export function GameBoard({ state, dispatch, myPlayerId }: Props) {
                 dispatch({ type: 'PAUSE_BOTS' });
               }
             }}>
-              {paused ? '▶' : '⏸'}
+              {paused ? <PlayIcon size={14} /> : <PauseIcon size={14} />}
             </button>
           )}
         </div>
@@ -478,7 +479,7 @@ export function GameBoard({ state, dispatch, myPlayerId }: Props) {
 
       {/* Portrait rotation hint (CSS controls visibility) */}
       <div className="rotate-hint">
-        <div className="rotate-hint-icon">📱</div>
+        <div className="rotate-hint-icon"><PhoneRotateIcon size={44} /></div>
         <div className="rotate-hint-text">Rotate device to landscape</div>
       </div>
     </div>

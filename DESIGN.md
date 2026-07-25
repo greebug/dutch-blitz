@@ -59,3 +59,32 @@ assumed: rasterized at 15px, **33% of the ink differs** between them.
 
 If you redraw them, re-run that test. Anything under ~25% is too similar to tell
 apart mid-game.
+
+## Two traps this codebase hit for real
+
+1. **Form controls do not inherit `font-family`.** Browsers hand `button`,
+   `input`, `textarea` and `select` the system UI font regardless of what
+   `body` says — which quietly left every button and input in the app rendering
+   in **Arial**, one of the exact fonts you're told never to ship. Setting it
+   per-class is whack-a-mole; `button, input, textarea, select { font: inherit }`
+   in the base layer is the fix. If new text ever looks subtly off-brand, check
+   this first.
+2. **The hub "← All games" link is `position: fixed` at top-left**, so any
+   screen whose content starts at the very top will collide with it on a narrow
+   viewport — it landed on the wordmark. Menu screens reserve a 54px top strip.
+   Keep that padding if you restructure them.
+
+## Checking icons without being able to see them
+
+There's no screenshot capability in the agent sandbox, but an SVG can be
+rasterized in the page and read back as a density grid, which is enough to
+catch shape problems:
+
+```js
+// serialize the rendered <svg>, draw it to a canvas at N px,
+// then map each pixel's alpha through ' .:-=+*#%@'
+```
+
+That is how the boy/girl silhouettes were checked at 15px and how a set of
+floating, detached marks (the girl's chin ribbons, which read as noise rather
+than detail) were caught and removed.

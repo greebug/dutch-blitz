@@ -3,7 +3,7 @@ import { CardColor, BotDifficulty } from '../game/types';
 import { LobbyPlayer, LobbyState, RoomConfig, ChatMessage, AuthInfo } from '../hooks/useMultiplayer';
 import { Leaderboard } from './Leaderboard';
 import { unlockAudio, startMusic } from '../hooks/useSounds';
-import { FactionIcon, FACTION_LABEL } from './icons';
+import { FactionIcon, FACTION_LABEL, PersonIcon, CheckIcon, LinkIcon } from './icons';
 
 // ─── Faction config ───────────────────────────────────────────────────────────
 
@@ -228,7 +228,7 @@ export function MultiLobbyScreen({
           How to Play BingBongBlitz
         </div>
 
-        <div style={{ fontWeight: 700, color: '#ffd54f', marginBottom: 4 }}>🎯 Goal</div>
+        <div style={{ fontWeight: 700, color: '#ffd54f', marginBottom: 4 }}>Goal</div>
         <p style={{ margin: '0 0 12px' }}>
           Be the first player to empty your <strong>Blitz pile</strong> each round.
           First player to reach the target score (e.g. 75) wins the game.
@@ -252,13 +252,13 @@ export function MultiLobbyScreen({
           Tap a card, then tap the destination to move it.
         </p>
 
-        <div style={{ fontWeight: 700, color: '#ffd54f', marginBottom: 4 }}>🪵 Wood Pile</div>
+        <div style={{ fontWeight: 700, color: '#ffd54f', marginBottom: 4 }}>Wood Pile</div>
         <p style={{ margin: '0 0 12px' }}>
           Tap the face-down pile to flip 3 cards. The top face-up card is playable.
           When the pile runs out, it automatically reshuffles from discards.
         </p>
 
-        <div style={{ fontWeight: 700, color: '#ffd54f', marginBottom: 4 }}>📊 Scoring</div>
+        <div style={{ fontWeight: 700, color: '#ffd54f', marginBottom: 4 }}>Scoring</div>
         <ul style={{ margin: '0 0 12px', paddingLeft: 18 }}>
           <li>+1 point per card you played to the center this round</li>
           <li>−2 points per card remaining in your Blitz pile</li>
@@ -268,7 +268,7 @@ export function MultiLobbyScreen({
           First to the target score wins!
         </p>
 
-        <div style={{ fontWeight: 700, color: '#ffd54f', marginBottom: 4 }}>👥 Multiplayer</div>
+        <div style={{ fontWeight: 700, color: '#ffd54f', marginBottom: 4 }}>Multiplayer</div>
         <p style={{ margin: '0 0 16px' }}>
           Share your room code with friends — up to 4 players total.
           Empty slots are filled with bots. Pick a faction (color) before starting.
@@ -318,13 +318,13 @@ export function MultiLobbyScreen({
         }}
       >
         <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 16, color: '#ffd54f' }}>
-          👤 Profile
+          <PersonIcon size={13} /> Profile
         </div>
 
         {authInfo ? (
           <>
             <div style={{ marginBottom: 16, fontSize: 13, color: '#66bb6a' }}>
-              ✓ Signed in as <strong>{authInfo.displayName}</strong>
+              <CheckIcon size={12} /> Signed in as <strong>{authInfo.displayName}</strong>
             </div>
 
             {/* ELO — big hero stat */}
@@ -473,7 +473,7 @@ export function MultiLobbyScreen({
         }}
       >
         <div style={{ fontSize: 22, fontWeight: 900, color: '#ffd54f', marginBottom: 6 }}>
-          🎮 You're invited!
+          You&apos;re invited!
         </div>
         <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', marginBottom: 20 }}>
           Joining room{' '}
@@ -486,7 +486,7 @@ export function MultiLobbyScreen({
           /* Already signed in — just confirm */
           <div style={{ marginBottom: 20 }}>
             <div style={{ fontSize: 13, color: '#66bb6a', marginBottom: 12 }}>
-              ✓ Playing as <strong>{authInfo.displayName}</strong>
+              <CheckIcon size={12} /> Playing as <strong>{authInfo.displayName}</strong>
             </div>
           </div>
         ) : (
@@ -578,7 +578,7 @@ export function MultiLobbyScreen({
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
           >
-            👤
+            <PersonIcon size={17} />
           </button>
 
           <div
@@ -619,7 +619,7 @@ export function MultiLobbyScreen({
             alignItems: 'center',
             gap: 10,
           }}>
-            <span style={{ color: '#66bb6a', fontSize: 16 }}>✓</span>
+            <CheckIcon size={14} style={{ color: 'var(--card-green)' }} />
             <span>
               Signed in as <strong>{authInfo.displayName}</strong>
               {' · '}
@@ -777,7 +777,7 @@ export function MultiLobbyScreen({
               flexShrink: 0,
             }}
           >
-            {copySuccess ? '✓ Copied!' : '🔗 Invite'}
+            {copySuccess ? <><CheckIcon size={13} /> Copied!</> : <><LinkIcon size={13} /> Invite</>}
           </button>
         </div>
         <div className="lobby-subtitle">
@@ -878,7 +878,7 @@ export function MultiLobbyScreen({
           <div className="lobby-chat-title">Chat</div>
           <div className="chat-messages" ref={chatListRef}>
             {chatMessages.length === 0 ? (
-              <div className="chat-empty">Say hi 👋</div>
+              <div className="chat-empty">Say hi</div>
             ) : (
               chatMessages.map((msg, i) => (
                 <div key={i} className="chat-message">

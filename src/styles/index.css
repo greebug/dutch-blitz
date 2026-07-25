@@ -67,6 +67,16 @@
   --card-sm-h:  48px;
 }
 
+/* Form controls do NOT inherit font-family -- browsers hand them the system
+   UI font no matter what body says. That silently left every button and input
+   in this app rendering in ARIAL, which is both off-brand and specifically one
+   of the fonts you're told never to ship. Setting it per-class is whack-a-mole;
+   this is the fix. */
+button, input, textarea, select {
+  font: inherit;
+  color: inherit;
+}
+
 html, body, #root {
   height: 100%; width: 100%;
   background: var(--wood);
@@ -93,16 +103,14 @@ body {
 .setup-screen {
   display: flex; flex-direction: column; align-items: center;
   justify-content: center; min-height: 100%;
-  padding: 24px 20px; gap: 18px; overflow-y: auto;
+  padding: 54px 20px 24px; gap: 18px; overflow-y: auto;
   background: var(--wood);
 }
 .setup-title {
   font-family: var(--font-display);
   font-size: 42px; letter-spacing: 0; line-height: 1;
   color: var(--paper);
-  /* A hard offset shadow in the accent, like a two-pass poster print. Not a
-     glow -- a second impression of the same letters, slightly off-register. */
-  text-shadow: 3px 3px 0 var(--accent-dark);
+  text-shadow: 2px 2px 0 var(--accent), 5px 5px 0 var(--wood-deep);
 }
 .setup-subtitle {
   font-size: 12px; color: var(--paper-60); margin-top: 2px;
@@ -731,8 +739,7 @@ body {
 .blitz-popup-title {
   font-family: var(--font-display);
   font-size: 44px; color: var(--paper); letter-spacing: 0;
-  /* Offset print, not a glow. */
-  text-shadow: 4px 4px 0 var(--accent-dark);
+  text-shadow: 2px 2px 0 var(--accent), 5px 5px 0 var(--wood-deep);
 }
 .blitz-popup-player {
   font-size: 16px; font-weight: 600;
@@ -835,7 +842,8 @@ body {
   color: white;
 }
 .rotate-hint-icon {
-  font-size: 60px;
+  /* Holds an SVG now, not an emoji glyph, so font-size no longer sizes it. */
+  line-height: 0;
   animation: rotateHint 1.6s ease-in-out infinite;
 }
 @keyframes rotateHint {
@@ -878,14 +886,14 @@ body {
 .home-screen {
   display: flex; flex-direction: column; align-items: center;
   justify-content: center; min-height: 100%;
-  padding: 40px 24px; gap: 20px;
+  padding: 54px 24px 40px; gap: 20px;
   background: var(--wood); overflow-y: auto;
 }
 .home-title {
   font-family: var(--font-display);
   font-size: 50px; letter-spacing: 0; line-height: 0.95;
   color: var(--paper); text-align: center;
-  text-shadow: 4px 4px 0 var(--accent-dark);
+  text-shadow: 2px 2px 0 var(--accent), 5px 5px 0 var(--wood-deep);
 }
 .home-subtitle {
   font-size: 12px; color: var(--paper-60); margin-top: 4px;
@@ -917,14 +925,14 @@ body {
 /* ── LOBBY / MULTIPLAYER SCREEN ── */
 .lobby-screen {
   display: flex; flex-direction: column; align-items: center;
-  min-height: 100%; padding: 24px 20px 48px;
+  min-height: 100%; padding: 54px 20px 48px;
   gap: 16px; overflow-y: auto; background: var(--wood);
   -webkit-overflow-scrolling: touch; /* iOS momentum scroll */
 }
 .lobby-title {
   font-family: var(--font-display);
   font-size: 30px; color: var(--paper); letter-spacing: 0;
-  text-shadow: 3px 3px 0 var(--accent-dark);
+  text-shadow: 2px 2px 0 var(--accent), 4px 4px 0 var(--wood-deep);
 }
 .lobby-room-code {
   font-family: var(--font-display);
@@ -1145,3 +1153,22 @@ body {
 .reconnect-note {
   font-size: 13px; color: var(--paper-38); text-align: center; max-width: 260px;
 }
+
+/* ── LEADERBOARD RANK ── */
+.rank-medal {
+  position: relative; width: 24px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.rank-medal-num {
+  position: absolute; top: 54%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10px; font-weight: 800; color: var(--ink);
+}
+.rank-plain {
+  width: 24px; flex-shrink: 0; text-align: center;
+  font-size: 12px; font-weight: 700; color: var(--paper-38);
+}
+/* Inline icons that sit beside text need to ride the baseline, not the box. */
+.stat-icon svg, .lobby-tag svg, .lobby-action-btn svg,
+.leaderboard-title svg, .lobby-auth-line svg { vertical-align: -0.18em; }
