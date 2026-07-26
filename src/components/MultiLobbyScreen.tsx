@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CardColor, BotDifficulty } from '../game/types';
-import { LobbyPlayer, LobbyState, RoomConfig, ChatMessage, AuthInfo } from '../hooks/useMultiplayer';
+import {
+  LobbyPlayer, LobbyState, RoomConfig, ChatMessage, AuthInfo, BASE, ACCOUNT_HELP_URL,
+} from '../hooks/useMultiplayer';
 import { Leaderboard } from './Leaderboard';
 import { unlockAudio, startMusic } from '../hooks/useSounds';
 import { FactionIcon, FACTION_LABEL, BoyIcon, GirlIcon } from './icons';
@@ -49,7 +51,11 @@ interface Props {
   onStartGame: () => void;
   onLeave: () => void;
   onClearError: () => void;
-  onAuthPlay: (name: string, pin: string) => void;
+  authResolved: boolean;
+  authPending: boolean;
+  onSignIn: (username: string, password: string) => Promise<boolean>;
+  onSignUp: (username: string, password: string, email: string) => Promise<boolean>;
+  onSignOut: () => void;
   onClearAuthError: () => void;
   onSendMessage: (text: string) => void;
 }
@@ -58,33 +64,31 @@ interface Props {
 
 export function MultiLobbyScreen({
   phase, lobbyState, myPlayerId, error,
-  authInfo, authError,
+  authInfo, authError, authResolved, authPending,
   initialRoomCode, chatMessages,
   onCreateRoom, onJoinRoom, onChangeFaction, onUpdateConfig, onStartGame, onLeave,
-  onClearError, onAuthPlay, onClearAuthError, onSendMessage,
+  onClearError, onSignIn, onSignUp, onSignOut, onClearAuthError, onSendMessage,
 }: Props) {
   const [name, setName] = useState(() => localStorage.getItem('db-player-name') ?? '');
-  const [pin, setPin] = useState('');
   const [joinCode, setJoinCode] = useState(initialRoomCode);
   const [targetScore, setTargetScore] = useState(75);
   const [botDifficulty, setBotDifficulty] = useState<BotDifficulty>('medium');
   const [chatInput, setChatInput] = useState('');
   const [showRules, setShowRules] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
-  const [profileName, setProfileName] = useState(() => localStorage.getItem('db-player-name') ?? '');
-  const [profilePin, setProfilePin] = useState('');
-  const [profileLookupPending, setProfileLookupPending] = useState(false);
+  // Sign-in modal. Credentials go to Guesswhere, which owns accounts for every
+  // game on the domain -- there is no Blitz-specific password.
+  const [showSignIn, setShowSignIn] = useState(false);
+  const [signUpMode, setSignUpMode] = useState(false);
+  const [authUser, setAuthUser] = useState('');
+  const [authPass, setAuthPass] = useState('');
+  const [authEmail, setAuthEmail] = useState('');
   // Auto-join modal (shown when arriving via invite link)
   const [showAutoJoin, setShowAutoJoin] = useState(() => initialRoomCode.length > 0);
   const [autoJoinName, setAutoJoinName] = useState(() => localStorage.getItem('db-player-name') ?? '');
-  const [autoJoinPin, setAutoJoinPin] = useState('');
   // Copy-link feedback
   const [copySuccess, setCopySuccess] = useState(false);
   const chatListRef = useRef<HTMLDivElement>(null);
-
-  // Pending action: fired after auth_ok comes back
-  const [pendingCreate, setPendingCreate] = useState(false);
-  const [pendingJoin, setPendingJoin] = useState(false);
 
   // Scroll only the message list — not the whole page
   useEffect(() => {
@@ -92,40 +96,27 @@ export function MultiLobbyScreen({
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   }, [chatMessages]);
 
-  // When auth succeeds, fire the pending action
+  // Signing in closes the modal and clears the fields. Driven by authInfo
+  // rather than by the submit handler's return, so it also covers arriving
+  // already signed in from another game.
   useEffect(() => {
     if (!authInfo) return;
-    if (pendingCreate) {
-      setPendingCreate(false);
-      localStorage.setItem('db-player-name', authInfo.displayName);
-      onCreateRoom(authInfo.displayName, { targetScore, botDifficulty });
-    } else if (pendingJoin) {
-      setPendingJoin(false);
-      localStorage.setItem('db-player-name', authInfo.displayName);
-      onJoinRoom(joinCode.trim(), authInfo.displayName);
-    }
-  }, [authInfo]); // eslint-disable-line react-hooks/exhaustive-deps
+    setShowSignIn(false);
+    setAuthUser('');
+    setAuthPass('');
+    setAuthEmail('');
+  }, [authInfo]);
 
-  // Clear pending if auth fails
-  useEffect(() => {
-    if (authError) {
-      setPendingCreate(false);
-      setPendingJoin(false);
-      setProfileLookupPending(false);
-    }
-  }, [authError]);
+  function openSignIn(signUp: boolean) {
+    onClearAuthError();
+    setSignUpMode(signUp);
+    setShowSignIn(true);
+  }
 
-  // When profile lookup auth comes back, clear the pending flag
-  useEffect(() => {
-    if (authInfo && profileLookupPending) {
-      setProfileLookupPending(false);
-    }
-  }, [authInfo, profileLookupPending]);
-
-  function handleProfileLookup() {
-    if (!profileName.trim() || profilePin.length !== 4) return;
-    setProfileLookupPending(true);
-    onAuthPlay(profileName.trim(), profilePin.trim());
+  async function handleAuthSubmit() {
+    if (!authUser.trim() || !authPass || authPending) return;
+    if (signUpMode) await onSignUp(authUser.trim(), authPass, authEmail);
+    else await onSignIn(authUser.trim(), authPass);
   }
 
   function handleAutoJoinSubmit() {
@@ -133,20 +124,14 @@ export function MultiLobbyScreen({
     if (!n) return;
     unlockAudio(); // pre-warm AudioContext inside this gesture so music works on iOS
     setShowAutoJoin(false);
-    if (authInfo) {
-      onJoinRoom(initialRoomCode, authInfo.displayName);
-    } else if (autoJoinPin.length === 4) {
-      // Authenticate first — pending handler will use joinCode (= initialRoomCode)
-      setPendingJoin(true);
-      onAuthPlay(n, autoJoinPin.trim());
-    } else {
-      localStorage.setItem('db-player-name', n);
-      onJoinRoom(initialRoomCode, n);
-    }
+    if (!authInfo) localStorage.setItem('db-player-name', n);
+    onJoinRoom(initialRoomCode, n);
   }
 
   function handleCopyLink(code: string) {
-    const url = `${window.location.origin}/?room=${code}`;
+    // BASE, not a bare '/': in production the game lives at /blitz/, and the
+    // domain root is the hub's landing page.
+    const url = `${window.location.origin}${BASE}?room=${code}`;
     // Mobile: use native share sheet when available
     if (navigator.share) {
       navigator.share({ title: 'Join my BingBongBlitz game!', url }).catch(() => {});
@@ -174,35 +159,24 @@ export function MultiLobbyScreen({
   const displayName = authInfo?.displayName ?? name.trim();
   const canProceed = displayName.length > 0;
 
+  // Signing in no longer gates starting a game: identity already came in on the
+  // socket handshake, so by this point you are either signed in or a guest and
+  // there is nothing left to wait for. (The server re-derives a signed-in
+  // player's name from the account anyway, so the name sent here is only ever
+  // used for guests.)
   function handleCreate() {
     if (!canProceed) return;
     unlockAudio(); // pre-warm AudioContext inside this gesture so music works on iOS
-    if (authInfo) {
-      onCreateRoom(authInfo.displayName, { targetScore, botDifficulty });
-    } else if (pin.trim().length === 4) {
-      setPendingCreate(true);
-      onAuthPlay(name.trim(), pin.trim());
-    } else {
-      localStorage.setItem('db-player-name', name.trim());
-      onCreateRoom(name.trim(), { targetScore, botDifficulty });
-    }
+    if (!authInfo) localStorage.setItem('db-player-name', displayName);
+    onCreateRoom(displayName, { targetScore, botDifficulty });
   }
 
   function handleJoin() {
     if (!canProceed || !joinCode.trim()) return;
     unlockAudio(); // pre-warm AudioContext inside this gesture so music works on iOS
-    if (authInfo) {
-      onJoinRoom(joinCode.trim(), authInfo.displayName);
-    } else if (pin.trim().length === 4) {
-      setPendingJoin(true);
-      onAuthPlay(name.trim(), pin.trim());
-    } else {
-      localStorage.setItem('db-player-name', name.trim());
-      onJoinRoom(joinCode.trim(), name.trim());
-    }
+    if (!authInfo) localStorage.setItem('db-player-name', displayName);
+    onJoinRoom(joinCode.trim(), displayName);
   }
-
-  const isAuthenticating = pendingCreate || pendingJoin;
 
   // ── Rules modal ──────────────────────────────────────────────────────────
   const rulesModal = showRules && (
@@ -390,7 +364,8 @@ export function MultiLobbyScreen({
             </div>
 
             <button
-              onClick={() => { setShowProfile(false); window.location.reload(); }}
+              onClick={() => { setShowProfile(false); onSignOut(); }}
+              disabled={authPending}
               style={{
                 width: '100%', padding: '9px', marginBottom: 8,
                 background: 'rgba(255,255,255,0.07)',
@@ -404,53 +379,33 @@ export function MultiLobbyScreen({
         ) : (
           <>
             <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, marginBottom: 16 }}>
-              Enter your name and PIN to view your stats.
+              Sign in to keep your wins, ELO and speed records. One account covers
+              every game at bingbongblitz.com.
             </div>
 
-            {authError && (
-              <div style={{ background: 'rgba(239,83,80,0.15)', border: '1px solid rgba(239,83,80,0.4)', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 13, color: '#ef9a9a' }}>
-                {authError}
-              </div>
-            )}
-
-            <div className="setup-label">Name</div>
-            <input
-              className="setup-input"
-              value={profileName}
-              onChange={e => setProfileName(e.target.value)}
-              placeholder="Your player name"
-              maxLength={16}
-              style={{ marginBottom: 10 }}
-            />
-            <div className="setup-label">PIN</div>
-            <input
-              className="setup-input"
-              type="password"
-              inputMode="numeric"
-              value={profilePin}
-              onChange={e => setProfilePin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              placeholder="4-digit PIN"
-              maxLength={4}
-              style={{ marginBottom: 14 }}
-            />
             <button
-              onClick={handleProfileLookup}
-              disabled={!profileName.trim() || profilePin.length !== 4 || profileLookupPending}
+              onClick={() => { setShowProfile(false); openSignIn(false); }}
               style={{
-                width: '100%', padding: '11px',
-                background: profileName.trim() && profilePin.length === 4 && !profileLookupPending
-                  ? '#f9a825' : 'rgba(255,255,255,0.12)',
-                color: profileName.trim() && profilePin.length === 4 && !profileLookupPending
-                  ? '#111' : 'rgba(255,255,255,0.35)',
+                width: '100%', padding: '11px', marginBottom: 8,
+                background: '#f9a825', color: '#111',
                 border: 'none', borderRadius: 10,
                 fontWeight: 800, fontSize: 14, cursor: 'pointer',
-                marginBottom: 8,
               }}
             >
-              {profileLookupPending ? 'Looking up…' : 'View My Stats'}
+              Sign In
             </button>
             <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', textAlign: 'center' }}>
-              Don't have a PIN yet? Enter one when you start a game to create an account.
+              No account?{' '}
+              <button
+                onClick={() => { setShowProfile(false); openSignIn(true); }}
+                style={{
+                  background: 'none', border: 'none', padding: 0, fontSize: 11,
+                  color: 'rgba(255,255,255,0.5)', textDecoration: 'underline', cursor: 'pointer',
+                }}
+              >
+                Create one
+              </button>
+              {' '}— or just play as a guest.
             </div>
           </>
         )}
@@ -467,6 +422,127 @@ export function MultiLobbyScreen({
           Close
         </button>
       </div>
+    </div>
+  );
+
+  // ── Sign-in modal ────────────────────────────────────────────────────────
+  // Posts to Guesswhere's auth API, same origin. The session cookie it sets is
+  // scoped to the whole domain, so signing in here also signs you in at
+  // /guesswhere and anywhere else on bingbongblitz.com.
+  const signInModal = showSignIn && (
+    <div
+      onClick={() => setShowSignIn(false)}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1001,
+        background: 'rgba(0,0,0,0.85)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <form
+        onClick={e => e.stopPropagation()}
+        onSubmit={e => { e.preventDefault(); handleAuthSubmit(); }}
+        style={{
+          background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.15)',
+          borderRadius: 16, padding: '26px 22px', maxWidth: 340, width: '100%',
+          color: 'rgba(255,255,255,0.88)', fontSize: 14, lineHeight: 1.6,
+        }}
+      >
+        <div style={{ fontSize: 20, fontWeight: 900, color: '#ffd54f', marginBottom: 4 }}>
+          {signUpMode ? 'Create an account' : 'Sign in'}
+        </div>
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginBottom: 18 }}>
+          One account for every game at bingbongblitz.com.
+        </div>
+
+        {authError && (
+          <div style={{ background: 'rgba(239,83,80,0.15)', border: '1px solid rgba(239,83,80,0.4)', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 13, color: '#ef9a9a' }}>
+            {authError}
+          </div>
+        )}
+
+        <div className="setup-label">Username</div>
+        <input
+          className="setup-input"
+          value={authUser}
+          onChange={e => setAuthUser(e.target.value)}
+          placeholder="Your username"
+          autoComplete="username"
+          maxLength={20}
+          autoFocus
+          style={{ marginBottom: 10 }}
+        />
+
+        <div className="setup-label">Password</div>
+        <input
+          className="setup-input"
+          type="password"
+          value={authPass}
+          onChange={e => setAuthPass(e.target.value)}
+          placeholder={signUpMode ? 'At least 8 characters' : 'Your password'}
+          autoComplete={signUpMode ? 'new-password' : 'current-password'}
+          style={{ marginBottom: signUpMode ? 10 : 18 }}
+        />
+
+        {signUpMode && (
+          <>
+            <div className="setup-label">
+              Email{' '}
+              <span style={{ fontWeight: 400, opacity: 0.5 }}>
+                (optional — the only way to reset a forgotten password)
+              </span>
+            </div>
+            <input
+              className="setup-input"
+              type="email"
+              value={authEmail}
+              onChange={e => setAuthEmail(e.target.value)}
+              placeholder="you@example.com"
+              autoComplete="email"
+              style={{ marginBottom: 18 }}
+            />
+          </>
+        )}
+
+        <button
+          type="submit"
+          disabled={!authUser.trim() || !authPass || authPending}
+          style={{
+            width: '100%', padding: '12px',
+            background: authUser.trim() && authPass && !authPending ? '#f9a825' : 'rgba(255,255,255,0.12)',
+            color: authUser.trim() && authPass && !authPending ? '#111' : 'rgba(255,255,255,0.35)',
+            border: 'none', borderRadius: 10,
+            fontWeight: 900, fontSize: 15, cursor: 'pointer',
+            marginBottom: 10,
+          }}
+        >
+          {authPending ? '…' : signUpMode ? 'Create account' : 'Sign in'}
+        </button>
+
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', textAlign: 'center' }}>
+          {signUpMode ? 'Already have one? ' : 'No account yet? '}
+          <button
+            type="button"
+            onClick={() => { onClearAuthError(); setSignUpMode(!signUpMode); }}
+            style={{
+              background: 'none', border: 'none', padding: 0, fontSize: 12,
+              color: 'rgba(255,255,255,0.6)', textDecoration: 'underline', cursor: 'pointer',
+            }}
+          >
+            {signUpMode ? 'Sign in' : 'Create one'}
+          </button>
+        </div>
+
+        {!signUpMode && (
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', textAlign: 'center', marginTop: 8 }}>
+            {/* Password reset arrives by emailed link, so it stays on Guesswhere's
+                own pages rather than being rebuilt here. */}
+            <a href={ACCOUNT_HELP_URL} style={{ color: 'rgba(255,255,255,0.4)' }}>
+              Forgot your password?
+            </a>
+          </div>
+        )}
+      </form>
     </div>
   );
 
@@ -507,13 +583,10 @@ export function MultiLobbyScreen({
             </div>
           </div>
         ) : (
-          /* Need to collect name + optional PIN */
+          /* Playing as a guest -- just a name. Signing in is offered below
+             rather than required: an invite link should never dead-end at a
+             login form. */
           <>
-            {authError && (
-              <div style={{ background: 'rgba(239,83,80,0.15)', border: '1px solid rgba(239,83,80,0.4)', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 13, color: '#ef9a9a' }}>
-                {authError}
-              </div>
-            )}
             <div className="setup-label">Your Name</div>
             <input
               className="setup-input"
@@ -524,22 +597,19 @@ export function MultiLobbyScreen({
               autoFocus
               style={{ marginBottom: 10 }}
             />
-            <div className="setup-label">
-              PIN{' '}
-              <span style={{ fontWeight: 400, opacity: 0.5 }}>
-                (4 digits, optional — saves stats)
-              </span>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 20 }}>
+              Playing as a guest.{' '}
+              <button
+                onClick={() => { setShowAutoJoin(false); openSignIn(false); }}
+                style={{
+                  background: 'none', border: 'none', padding: 0, fontSize: 11,
+                  color: 'rgba(255,255,255,0.55)', textDecoration: 'underline', cursor: 'pointer',
+                }}
+              >
+                Sign in
+              </button>
+              {' '}first to record your stats.
             </div>
-            <input
-              className="setup-input"
-              type="password"
-              inputMode="numeric"
-              value={autoJoinPin}
-              onChange={e => setAutoJoinPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              placeholder="Leave blank to play as guest"
-              maxLength={4}
-              style={{ marginBottom: 20 }}
-            />
           </>
         )}
 
@@ -580,6 +650,7 @@ export function MultiLobbyScreen({
       <div className="lobby-screen">
         {rulesModal}
         {profileModal}
+        {signInModal}
         {autoJoinModal}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {/* Profile button — left of title */}
@@ -601,7 +672,7 @@ export function MultiLobbyScreen({
           <div
             className="lobby-title"
             style={{ margin: 0, flex: 1, textAlign: 'center', cursor: 'pointer' }}
-            onClick={() => { window.history.pushState({}, '', '/'); window.location.href = '/'; }}
+            onClick={() => { window.location.href = BASE; }}
           >BingBongBlitz</div>
 
           {/* Rules button — right of title */}
@@ -648,7 +719,8 @@ export function MultiLobbyScreen({
               )}
             </span>
             <button
-              onClick={() => { /* sign out just clears locally — refresh page to fully reset */ window.location.reload(); }}
+              onClick={onSignOut}
+              disabled={authPending}
               style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 11 }}
             >
               sign out
@@ -668,8 +740,10 @@ export function MultiLobbyScreen({
           </div>
         )}
 
-        {/* Name + PIN */}
-        {!authInfo && (
+        {/* Guest name, or an invitation to sign in. Rendered only once the
+            server has said who you are -- showing the signed-out form first
+            and swapping it out a beat later reads as having been logged out. */}
+        {authResolved && !authInfo && (
           <div className="lobby-section">
             <div className="setup-label">Your Name</div>
             <input
@@ -679,21 +753,24 @@ export function MultiLobbyScreen({
               placeholder="Enter your name"
               maxLength={16}
             />
-            <div className="setup-label" style={{ marginTop: 10 }}>
-              PIN{' '}
-              <span style={{ fontWeight: 400, opacity: 0.5 }}>
-                (4 digits, optional — saves your stats across devices)
-              </span>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+              marginTop: 10, fontSize: 12, color: 'rgba(255,255,255,0.35)',
+            }}>
+              <span>Playing as a guest — wins and records aren&apos;t saved.</span>
+              <button
+                onClick={() => openSignIn(false)}
+                style={{
+                  marginLeft: 'auto',
+                  background: 'rgba(255,255,255,0.07)',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                  borderRadius: 8, padding: '6px 12px',
+                  color: 'rgba(255,255,255,0.75)', fontSize: 12, cursor: 'pointer',
+                }}
+              >
+                Sign in
+              </button>
             </div>
-            <input
-              className="setup-input"
-              type="password"
-              inputMode="numeric"
-              value={pin}
-              onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              placeholder="Leave blank to play as guest"
-              maxLength={4}
-            />
           </div>
         )}
 
@@ -712,9 +789,9 @@ export function MultiLobbyScreen({
             <button
               className="lobby-action-btn"
               onClick={handleJoin}
-              disabled={!canProceed || !joinCode.trim() || isAuthenticating}
+              disabled={!canProceed || !joinCode.trim() || !authResolved}
             >
-              {isAuthenticating && pendingJoin ? '…' : 'Join'}
+              Join
             </button>
           </div>
         </div>
@@ -749,8 +826,8 @@ export function MultiLobbyScreen({
           </div>
 
           <button className="start-btn" onClick={handleCreate}
-            disabled={!canProceed || isAuthenticating}>
-            {isAuthenticating && pendingCreate ? 'Signing in…' : 'Create Game'}
+            disabled={!canProceed || !authResolved}>
+            Create Game
           </button>
         </div>
 

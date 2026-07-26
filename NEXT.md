@@ -2,6 +2,63 @@
 
 State as of `769c5b5` (2026-07-25). Read `DESIGN.md` first for the visual system.
 
+## 0. Single sign-on — PIN auth is gone (2026-07-26)
+
+Accounts are shared across every game on bingbongblitz.com now, and **Guesswhere owns
+them** (`../Guesswhere`, see its CLAUDE.md "Single sign-on"). It already had real
+accounts — scrypt passwords, optional verified email, password reset — so this game
+stopped keeping a second set of credentials rather than growing them.
+
+**How identity arrives here.** Guesswhere's session cookie is scoped to `Path=/`, so it
+comes in on the socket.io handshake by itself. `authenticateSocket()` forwards that raw
+`Cookie` header to `GET ${GUESSWHERE_ORIGIN}/guesswhere/api/auth/me` and takes the answer
+as authoritative. Nothing a client *says* about who it is is trusted anywhere.
+
+Three things worth knowing before touching it:
+
+- **It runs in `io.use()` middleware, not in the `connection` handler.** Middleware
+  settles before the client's first event is delivered. Resolving it alongside
+  `connection` left a real window — one network round-trip wide — where a `create_room`
+  fired immediately on connect was treated as a guest's.
+- **`handshake.headers` is frozen at connect time**, so a cookie written after the socket
+  opened is invisible to the server. That is why signing in on the client **reconnects the
+  socket** (`reauthenticate()` in `useMultiplayer.ts`) instead of emitting an "I signed in
+  now" event: one cookie-reading code path covers every case.
+- **`auth_state` fires on every connection, including guests' (as `null`).** "Signed out"
+  and "haven't heard back yet" have to be distinguishable or the lobby renders a
+  signed-out state for a beat on every load, which reads as having been logged out.
+
+**Old records are kept, deliberately not merged.** Legacy PIN rows keep their wins and ELO
+and stay on the boards forever, frozen — nothing can log into them any more. A Guesswhere
+account gets a *new* row keyed on `gw_user_id`. That is why the migration drops the UNIQUE
+on `accounts.name_lower`: it lets a Guesswhere "greebug" coexist with the legacy PIN
+"greebug" instead of colliding on insert. **Consequence to expect, not a bug: the ELO
+board can show the same display name twice.**
+
+`SSO_CUTOVER` in the leaderboard query is the other half. Rows recorded before it rank
+exactly as they did (PIN and guest alike — real history, nobody's records deleted); after
+it, a round only ranks if it's attached to an account. Guest rounds are still *written*,
+just not ranked.
+
+**One new Railway variable:** `GUESSWHERE_ORIGIN=https://bingbongblitz.com`.
+
+### Still unverified: the Postgres migration
+
+The `ALTER TABLE`s in `initDb()` have **not** been run against a real database — there's no
+Postgres, Docker or `psql` on the dev machine. Everything else was verified live: the
+cookie resolves to the right user through the middleware, `[auth]` logs before the
+connection handler (proving the ordering), and guests and junk cookies fall through
+silently. **Watch the first deploy's boot logs**, or run the four statements by hand
+against the Railway database first. They're all additive or constraint drops, so they're
+safe to re-run.
+
+### Base-path bugs fixed alongside it
+
+`history.replaceState` and hand-built `location.origin` URLs get **no** rewrite from
+Vite's `base` — they're just strings. Starting a room rewrote the address bar to
+`bingbongblitz.com/?room=XXXX`, the *hub's* landing page, and the invite link copied that
+same wrong URL. Both now go through `BASE` (`import.meta.env.BASE_URL`).
+
 ## 1. The Arial fallback — DONE (2026-07-25)
 
 `button, input, textarea, select { font: inherit; color: inherit; }` is in

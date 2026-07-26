@@ -48,6 +48,46 @@ export interface AuthInfo {
 
 export type MultiPhase = 'idle' | 'lobby' | 'playing';
 
+/**
+ * Where this game is mounted -- '/blitz/' in production (see vite.config's
+ * `base`), '/' in dev.
+ *
+ * Vite rewrites asset URLs for us but does nothing to a path handed to
+ * `history.replaceState` or built by hand from `location.origin`; those are
+ * just strings. Without the prefix, playing a round rewrote the address bar to
+ * bingbongblitz.com/?room=XXXX -- the HUB's landing page -- so a refresh or a
+ * shared invite link left the game entirely.
+ */
+export const BASE = import.meta.env.BASE_URL;
+
+// ─── Accounts ─────────────────────────────────────────────────────────────────
+
+// One account covers every game on bingbongblitz.com, and Guesswhere owns it:
+// it holds the users table, the password hashing and the email verification, so
+// the other games sign in THROUGH it rather than keeping a second set of
+// credentials. Same origin, so these are ordinary same-origin fetches and the
+// httpOnly session cookie rides along by itself.
+//
+// Password reset and email verification stay on Guesswhere's own pages -- they
+// arrive by emailed link, so there is nothing to reimplement here.
+const AUTH_API = '/guesswhere/api/auth';
+export const ACCOUNT_HELP_URL = '/guesswhere';
+
+async function authRequest(path: string, body: unknown): Promise<string | null> {
+  try {
+    const res = await fetch(`${AUTH_API}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) return null;
+    const data = await res.json().catch(() => null);
+    return data?.error ?? 'Something went wrong. Please try again.';
+  } catch {
+    return "Couldn't reach the accounts service. Check your connection.";
+  }
+}
+
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useMultiplayer() {
@@ -66,6 +106,11 @@ export function useMultiplayer() {
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
   const [authInfo, setAuthInfo] = useState<AuthInfo | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  // "Signed out" vs "haven't heard back yet" -- without this the lobby renders
+  // its signed-out state for a moment on every load even for someone who is
+  // signed in, which reads as having been logged out.
+  const [authResolved, setAuthResolved] = useState(false);
+  const [authPending, setAuthPending] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
 
   const setRecon = (val: boolean) => {
@@ -96,7 +141,7 @@ export function useMultiplayer() {
       setMyPlayerId(playerId);
       sessionRef.current = { code, playerId };
       setPhase('lobby');
-      window.history.replaceState({}, '', `/?room=${code}`);
+      window.history.replaceState({}, '', `${BASE}?room=${code}`);
     });
 
     socket.on('room_joined', ({ playerId, code }: { playerId: string; code: string }) => {
@@ -106,7 +151,7 @@ export function useMultiplayer() {
       setRecon(false);
       setError(null);
       setPhase('lobby');
-      window.history.replaceState({}, '', `/?room=${code}`);
+      window.history.replaceState({}, '', `${BASE}?room=${code}`);
     });
 
     socket.on('room_error', ({ message }: { message: string }) => {
@@ -122,7 +167,7 @@ export function useMultiplayer() {
         setCountdown(null);
         myPlayerIdRef.current = null;
         setMyPlayerId(null);
-        window.history.replaceState({}, '', '/');
+        window.history.replaceState({}, '', BASE);
       }
     });
 
@@ -167,16 +212,15 @@ export function useMultiplayer() {
       myPlayerIdRef.current = null;
       setMyPlayerId(null);
       // authInfo intentionally kept — user stays signed in across rooms
-      window.history.replaceState({}, '', '/');
+      window.history.replaceState({}, '', BASE);
     });
 
-    socket.on('auth_ok', ({ displayName, stats }: { displayName: string; stats: AccountStats }) => {
-      setAuthInfo({ displayName, stats });
-      setAuthError(null);
-    });
-
-    socket.on('auth_error', ({ message }: { message: string }) => {
-      setAuthError(message);
+    // Sent on every connection, signed in or not. Identity comes from the
+    // session cookie the browser already carries, so there is nothing to
+    // submit -- the server resolves the handshake and tells us the answer.
+    socket.on('auth_state', (info: AuthInfo | null) => {
+      setAuthInfo(info);
+      setAuthResolved(true);
     });
 
     socket.on('disconnect', () => {
@@ -236,10 +280,54 @@ export function useMultiplayer() {
     socketRef.current?.emit('chat_message', { text: trimmed });
   }, []);
 
-  const authPlay = useCallback((name: string, pin: string) => {
-    setAuthError(null);
-    socketRef.current?.emit('auth_play', { name: name.trim(), pin: pin.trim() });
+  /**
+   * Reconnects the socket so the server sees the cookie that was just set (or
+   * cleared).
+   *
+   * `handshake.headers` is frozen at connect time -- a cookie written after the
+   * socket opened is invisible to the server until a NEW handshake. So rather
+   * than inventing an "I signed in now" message the server would have to take
+   * on trust, signing in simply starts a fresh connection, and the one
+   * cookie-reading code path on the server covers every case.
+   */
+  const reauthenticate = useCallback(() => {
+    setAuthResolved(false);
+    const socket = socketRef.current;
+    if (!socket) return;
+    socket.disconnect();
+    socket.connect();
   }, []);
+
+  const signIn = useCallback(async (username: string, password: string) => {
+    setAuthError(null);
+    setAuthPending(true);
+    const err = await authRequest('/login', { username, password });
+    setAuthPending(false);
+    if (err) { setAuthError(err); return false; }
+    reauthenticate();
+    return true;
+  }, [reauthenticate]);
+
+  const signUp = useCallback(async (username: string, password: string, email: string) => {
+    setAuthError(null);
+    setAuthPending(true);
+    const err = await authRequest('/signup', { username, password, email: email.trim() });
+    setAuthPending(false);
+    if (err) { setAuthError(err); return false; }
+    reauthenticate();
+    return true;
+  }, [reauthenticate]);
+
+  const signOut = useCallback(async () => {
+    setAuthError(null);
+    setAuthPending(true);
+    await authRequest('/logout', {});
+    setAuthPending(false);
+    setAuthInfo(null);
+    // Signing out ends the session for every game on the domain, so the
+    // reconnect is what makes THIS one agree with that.
+    reauthenticate();
+  }, [reauthenticate]);
 
   const dispatch = useCallback((action: GameAction) => {
     if (action.type === 'BACK_TO_SETUP') {
@@ -272,6 +360,8 @@ export function useMultiplayer() {
     reconnecting,
     authInfo,
     authError,
+    authResolved,
+    authPending,
     initialRoomCode,
     createRoom,
     joinRoom,
@@ -280,7 +370,9 @@ export function useMultiplayer() {
     startGame,
     leaveRoom,
     sendMessage,
-    authPlay,
+    signIn,
+    signUp,
+    signOut,
     dispatch,
     clearError: () => setError(null),
     clearAuthError: () => setAuthError(null),

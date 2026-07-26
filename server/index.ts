@@ -14,7 +14,6 @@ import { createServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import path from 'path';
 import { Pool } from 'pg';
-import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import { gameReducer } from '../src/game/engine';
 import { dealPlayer } from '../src/game/deck';
@@ -90,6 +89,47 @@ async function initDb() {
       played_at     TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  // ── Single sign-on migration ────────────────────────────────────────────
+  // Accounts used to be name + 4-digit PIN, local to this game. Identity now
+  // comes from a Guesswhere account shared across every game on
+  // bingbongblitz.com, and `gw_user_id` is the key.
+  //
+  // Every statement is additive or a constraint drop, so it is safe to run
+  // against the live table on each boot:
+  //
+  //  - `pin_hash` goes nullable because new rows have no PIN at all. Legacy
+  //    rows keep theirs; nothing can log in with it any more.
+  //  - `name_lower` STOPS being unique. That is what lets a Guesswhere
+  //    "greebug" coexist with the frozen legacy PIN "greebug" instead of
+  //    colliding on insert. Deliberate per the migration decision: old records
+  //    stay live and untouched, new ones start fresh. Two rows CAN therefore
+  //    show the same display name on the ELO board, one legacy and one live.
+  await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS gw_user_id TEXT`);
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS accounts_gw_user
+       ON accounts (gw_user_id) WHERE gw_user_id IS NOT NULL`
+  );
+  await pool.query(`ALTER TABLE accounts ALTER COLUMN pin_hash DROP NOT NULL`);
+
+  // The UNIQUE on name_lower is dropped by LOOKING UP its real name rather than
+  // assuming Postgres's default `accounts_name_lower_key`. A `DROP CONSTRAINT
+  // IF EXISTS` on a guessed name is a silent no-op when the guess is wrong, and
+  // the symptom would be a duplicate-key error on someone's first sign-in --
+  // long after this ran, with nothing in the logs pointing back here.
+  const { rows: nameConstraints } = await pool.query<{ conname: string }>(
+    `SELECT c.conname
+       FROM pg_constraint c
+       JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+      WHERE c.conrelid = 'accounts'::regclass
+        AND c.contype  = 'u'
+        AND a.attname  = 'name_lower'
+        AND array_length(c.conkey, 1) = 1`
+  );
+  for (const { conname } of nameConstraints) {
+    await pool.query(`ALTER TABLE accounts DROP CONSTRAINT "${conname}"`);
+    console.log(`Dropped UNIQUE constraint ${conname} on accounts.name_lower`);
+  }
+
   // Blueberry Trio — community-published puzzles.
   await pool.query(`
     CREATE TABLE IF NOT EXISTS trio_puzzles (
@@ -109,6 +149,82 @@ initDb().catch(console.error);
 
 interface AccountInfo { id: number; displayName: string; }
 const socketToAccount = new Map<string, AccountInfo>();
+
+// ─── Single sign-on ───────────────────────────────────────────────────────────
+
+// Guesswhere owns accounts for every game on bingbongblitz.com. Its session
+// cookie is scoped to the whole domain, so it arrives here on the socket.io
+// handshake by itself -- we just have to ask Guesswhere who it belongs to.
+//
+// The cookie is httpOnly and the client never sees its contents, so this is the
+// only thing on this server that decides who a player is. Nothing a client
+// *says* about its identity is trusted anywhere.
+const GUESSWHERE_ORIGIN = process.env.GUESSWHERE_ORIGIN ?? 'https://bingbongblitz.com';
+
+interface GwUser { id: string; username: string; }
+
+/** Resolves a raw Cookie header to a Guesswhere account, or null. Any failure
+ * -- unreachable, timed out, no cookie, not signed in -- is a null, which
+ * means the player carries on as a guest rather than being locked out. */
+async function resolveGwUser(cookieHeader: string | undefined): Promise<GwUser | null> {
+  if (!cookieHeader) return null;
+  try {
+    const res = await fetch(`${GUESSWHERE_ORIGIN}/guesswhere/api/auth/me`, {
+      headers: { Cookie: cookieHeader },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as { user: GwUser | null };
+    return data.user ?? null;
+  } catch (e) {
+    console.error('resolveGwUser error:', e);
+    return null;
+  }
+}
+
+/** The Blitz-side stats row for a Guesswhere account, created on first sight.
+ * Legacy PIN rows are never adopted -- they are matched on `name_lower`, this
+ * matches on `gw_user_id`, and the two never meet. */
+async function accountForGwUser(user: GwUser): Promise<AccountInfo | null> {
+  if (!pool) return null;
+  const { rows } = await pool.query(
+    `INSERT INTO accounts (name_lower, display_name, gw_user_id)
+       VALUES ($1, $2, $3)
+     ON CONFLICT (gw_user_id) WHERE gw_user_id IS NOT NULL
+       DO UPDATE SET display_name = EXCLUDED.display_name,
+                     name_lower   = EXCLUDED.name_lower
+     RETURNING id, display_name`,
+    [user.username.toLowerCase(), user.username, user.id]
+  );
+  return { id: rows[0].id, displayName: rows[0].display_name };
+}
+
+/** Reads the handshake cookie and resolves who is on the other end.
+ *
+ * Runs once per connection, because `handshake.headers` is frozen at connect
+ * time -- a cookie set after the socket opened is invisible here until a new
+ * handshake. That is why the client reconnects its socket after signing in
+ * rather than emitting some "I signed in now" event: one code path, and the
+ * server never has to take the client's word for anything. */
+async function authenticateSocket(socket: Socket): Promise<void> {
+  const user = await resolveGwUser(socket.handshake.headers.cookie);
+  if (!user) return; // guest
+  try {
+    const account = await accountForGwUser(user);
+    if (!account) {
+      // Recognised, but there is no stats database to file them under (no
+      // DATABASE_URL). Worth its own line: otherwise this is indistinguishable
+      // in the logs from a cookie that failed to resolve at all, and the two
+      // have completely different causes.
+      console.log(`[auth] ${socket.id} = ${user.username} (no stats DB -- unranked)`);
+      return;
+    }
+    socketToAccount.set(socket.id, account);
+    console.log(`[auth] ${socket.id} = ${account.displayName}`);
+  } catch (e) {
+    console.error('authenticateSocket error:', e);
+  }
+}
 
 // Bot ELO ratings used in ELO calculations
 const BOT_ELO: Record<string, number> = { easy: 800, medium: 1200, hard: 1600, impossible: 2200 };
@@ -136,36 +252,53 @@ async function saveRoundRecord(room: Room) {
   }
 }
 
+/** Sends one socket its account's headline stats, or `null` for a guest.
+ *
+ * The client keys its whole signed-in state off this event, which is why it
+ * fires on EVERY connection including guests': "not signed in" and "haven't
+ * heard back yet" have to be distinguishable, or the lobby renders a
+ * signed-out state for a moment on every load for someone who is signed in. */
+async function emitAccountStats(socketId: string, account: AccountInfo | null) {
+  if (!pool || !account) {
+    io.to(socketId).emit('auth_state', null);
+    return;
+  }
+  const { rows } = await pool.query(
+    `SELECT wins, games_played, rounds_played, elo FROM accounts WHERE id = $1`,
+    [account.id]
+  );
+  if (rows.length === 0) {
+    io.to(socketId).emit('auth_state', null);
+    return;
+  }
+  const row = rows[0];
+  const speedRes = await pool.query(
+    `SELECT MIN(secs_per_play)                                 AS best_speed,
+            SUM(duration_secs) / NULLIF(SUM(cards_played), 0) AS avg_speed
+     FROM round_records WHERE account_id = $1 AND cards_played >= 5`,
+    [account.id]
+  );
+  const sr = speedRes.rows[0];
+  io.to(socketId).emit('auth_state', {
+    displayName: account.displayName,
+    stats: {
+      wins:           parseInt(row.wins),
+      gamesPlayed:    parseInt(row.games_played),
+      roundsPlayed:   parseInt(row.rounds_played),
+      elo:            parseInt(row.elo),
+      bestRoundSpeed: sr?.best_speed != null ? parseFloat(sr.best_speed) : null,
+      avgGameSpeed:   sr?.avg_speed  != null ? parseFloat(sr.avg_speed)  : null,
+    },
+  });
+}
+
 async function refreshPlayerStats(room: Room) {
   if (!pool) return;
   for (const player of room.players) {
     const account = socketToAccount.get(player.socketId);
     if (!account) continue;
     try {
-      const { rows } = await pool.query(
-        `SELECT wins, games_played, rounds_played, elo FROM accounts WHERE id = $1`,
-        [account.id]
-      );
-      if (rows.length === 0) continue;
-      const row = rows[0];
-      const speedRes = await pool.query(
-        `SELECT MIN(secs_per_play)                                 AS best_speed,
-                SUM(duration_secs) / NULLIF(SUM(cards_played), 0) AS avg_speed
-         FROM round_records WHERE account_id = $1 AND cards_played >= 5`,
-        [account.id]
-      );
-      const sr = speedRes.rows[0];
-      io.to(player.socketId).emit('auth_ok', {
-        displayName: account.displayName,
-        stats: {
-          wins:           parseInt(row.wins),
-          gamesPlayed:    parseInt(row.games_played),
-          roundsPlayed:   parseInt(row.rounds_played),
-          elo:            parseInt(row.elo),
-          bestRoundSpeed: sr?.best_speed != null ? parseFloat(sr.best_speed) : null,
-          avgGameSpeed:   sr?.avg_speed  != null ? parseFloat(sr.avg_speed)  : null,
-        },
-      });
+      await emitAccountStats(player.socketId, account);
     } catch (e) { console.error('refreshPlayerStats error:', e); }
   }
 }
@@ -309,6 +442,17 @@ app.get('/api/health', async (_req, res) => {
 
 // ─── Leaderboard API ──────────────────────────────────────────────────────────
 
+// When PIN sign-on was retired for shared bingbongblitz.com accounts. Rows
+// recorded BEFORE this stand exactly as they were -- PIN-account and guest
+// alike, they are the game's real history and nobody's records get deleted.
+// After it, a round only ranks if it is attached to an account, which is what
+// "make an account to get on the leaderboard, or just play as guest" means in
+// SQL. The wins and ELO boards read `accounts` directly and need no cutover:
+// legacy rows keep their totals forever, frozen, because nothing can log into
+// them any more.
+const SSO_CUTOVER = '2026-07-26';
+const RANKS_SQL = `(account_id IS NOT NULL OR played_at < '${SSO_CUTOVER}')`;
+
 // Under /blitz because this one IS fetched by the browser, and the browser now
 // talks to bingbongblitz.com, where /blitz/* is what routes here.
 app.get('/blitz/api/leaderboard', async (_req, res) => {
@@ -322,7 +466,7 @@ app.get('/blitz/api/leaderboard', async (_req, res) => {
       pool.query(`
         SELECT player_name, secs_per_play, cards_played, played_at
         FROM round_records
-        WHERE cards_played >= 5
+        WHERE cards_played >= 5 AND ${RANKS_SQL}
         ORDER BY secs_per_play ASC
         LIMIT 3
       `),
@@ -332,12 +476,12 @@ app.get('/blitz/api/leaderboard', async (_req, res) => {
                SUM(duration_secs) / NULLIF(SUM(cards_played), 0) AS avg_secs,
                SUM(cards_played) AS total_cards
         FROM round_records
-        WHERE target_score >= 75 AND cards_played >= 5
+        WHERE target_score >= 75 AND cards_played >= 5 AND ${RANKS_SQL}
         GROUP BY player_name, game_id
         ORDER BY avg_secs ASC
         LIMIT 3
       `),
-      // Tab 3: Total wins by PIN account
+      // Tab 3: Total wins by account
       pool.query(`
         SELECT display_name, wins, games_played
         FROM accounts
@@ -452,15 +596,41 @@ function cleanupSocket(socketId: string) {
 
 // ─── Socket handlers ──────────────────────────────────────────────────────────
 
+// Identity is resolved in MIDDLEWARE rather than in the connection handler, so
+// it is settled before the client's first event is delivered. Resolving it
+// asynchronously alongside `connection` would leave a real window -- one
+// network round-trip to Guesswhere wide -- in which a `create_room` fired
+// immediately on connect would be treated as a guest's and get the typed name
+// instead of the account's.
+//
+// `next()` is never called with an error: a player whose identity can't be
+// established plays as a guest, they don't get refused a connection.
+io.use((socket, next) => {
+  authenticateSocket(socket).catch(console.error).finally(() => next());
+});
+
 io.on('connection', (socket: Socket) => {
   console.log(`[+] ${socket.id}`);
 
+  // Identity came from the handshake cookie in the middleware above; this just
+  // tells the client about it. Guests get an explicit null.
+  emitAccountStats(socket.id, socketToAccount.get(socket.id) ?? null).catch(console.error);
+
+  /** The name a player actually plays under. A signed-in player's is the
+   * account's, taken server-side -- so the name on the scoreboard is always
+   * the name the record is filed under, and can't be spoofed by editing the
+   * field. Guests get whatever they typed. */
+  function nameFor(claimed: string): string {
+    return socketToAccount.get(socket.id)?.displayName ?? claimed;
+  }
+
   // ── Create room ──────────────────────────────────────────────────────────
   socket.on('create_room', ({
-    name, config,
+    name: claimedName, config,
   }: { name: string; config: RoomConfig }) => {
     const code = generateCode();
     const playerId = socket.id;
+    const name = nameFor(claimedName);
 
     const room: Room = {
       code,
@@ -489,8 +659,9 @@ io.on('connection', (socket: Socket) => {
 
   // ── Join room ────────────────────────────────────────────────────────────
   socket.on('join_room', ({
-    code, name,
+    code, name: claimedName,
   }: { code: string; name: string }) => {
+    const name = nameFor(claimedName);
     const room = rooms.get(code.toUpperCase().trim());
 
     if (!room) {
@@ -690,85 +861,6 @@ io.on('connection', (socket: Socket) => {
     });
   });
 
-  // ── Auth (login or auto-register with PIN) ───────────────────────────────
-  socket.on('auth_play', async ({ name, pin }: { name: string; pin: string }) => {
-    const cleanName = name.trim();
-    const nameLower = cleanName.toLowerCase();
-
-    if (!pool) {
-      socket.emit('auth_ok', {
-        displayName: cleanName,
-        stats: { wins: 0, gamesPlayed: 0, roundsPlayed: 0, elo: 1200,
-                 bestRoundSpeed: null, avgGameSpeed: null },
-      });
-      return;
-    }
-
-    if (!pin || !/^\d{4}$/.test(pin)) {
-      socket.emit('auth_error', { message: 'PIN must be exactly 4 digits.' });
-      return;
-    }
-
-    try {
-      const { rows } = await pool.query(
-        `SELECT id, display_name, pin_hash, wins, games_played, rounds_played, elo
-           FROM accounts WHERE name_lower = $1`,
-        [nameLower]
-      );
-
-      if (rows.length > 0) {
-        const row = rows[0];
-        const match = await bcrypt.compare(pin, row.pin_hash);
-        if (!match) {
-          socket.emit('auth_error', { message: 'Wrong PIN for that name. Try again.' });
-          return;
-        }
-        socketToAccount.set(socket.id, { id: row.id, displayName: row.display_name });
-
-        // Fetch speed stats for this account
-        const speedRes = await pool.query(
-          `SELECT MIN(secs_per_play)                                       AS best_speed,
-                  SUM(duration_secs) / NULLIF(SUM(cards_played), 0)       AS avg_speed
-           FROM round_records WHERE account_id = $1 AND cards_played >= 5`,
-          [row.id]
-        );
-        const sr = speedRes.rows[0];
-
-        socket.emit('auth_ok', {
-          displayName: row.display_name,
-          stats: {
-            wins:           row.wins,
-            gamesPlayed:    row.games_played,
-            roundsPlayed:   row.rounds_played,
-            elo:            row.elo,
-            bestRoundSpeed: sr?.best_speed  != null ? parseFloat(sr.best_speed)  : null,
-            avgGameSpeed:   sr?.avg_speed   != null ? parseFloat(sr.avg_speed)   : null,
-          },
-        });
-      } else {
-        const pinHash = await bcrypt.hash(pin, 10);
-        const { rows: newRows } = await pool.query(
-          `INSERT INTO accounts (name_lower, display_name, pin_hash)
-             VALUES ($1, $2, $3) RETURNING id`,
-          [nameLower, cleanName, pinHash]
-        );
-        socketToAccount.set(socket.id, { id: newRows[0].id, displayName: cleanName });
-        socket.emit('auth_ok', {
-          displayName: cleanName,
-          stats: { wins: 0, gamesPlayed: 0, roundsPlayed: 0, elo: 1200,
-                   bestRoundSpeed: null, avgGameSpeed: null },
-        });
-      }
-    } catch (e: any) {
-      if (e.code === '23505') {
-        socket.emit('auth_error', { message: 'That name was just taken — try a slightly different one.' });
-      } else {
-        console.error('auth_play error:', e);
-        socket.emit('auth_error', { message: 'Something went wrong. Please try again.' });
-      }
-    }
-  });
-
   // ── Leave ─────────────────────────────────────────────────────────────────
   socket.on('leave', () => {
     cleanupSocket(socket.id);
@@ -797,8 +889,11 @@ io.on('connection', (socket: Socket) => {
     // Re-map to new socket
     socketToRoom.delete(oldSocketId);
     socketToRoom.set(socket.id, room.code);
-    const account = socketToAccount.get(oldSocketId);
-    if (account) { socketToAccount.delete(oldSocketId); socketToAccount.set(socket.id, account); }
+    // The account is NOT carried over from the old socket. This connection did
+    // its own handshake and the middleware already resolved its cookie, which
+    // is the more current answer -- carrying the old entry forward would
+    // resurrect an identity someone had just signed out of.
+    socketToAccount.delete(oldSocketId);
     player.socketId = socket.id;
     socket.join(room.code);
 

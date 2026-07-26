@@ -41,7 +41,11 @@ export default function App() {
         onStartGame={multi.startGame}
         onLeave={multi.leaveRoom}
         onClearError={multi.clearError}
-        onAuthPlay={multi.authPlay}
+        authResolved={multi.authResolved}
+        authPending={multi.authPending}
+        onSignIn={multi.signIn}
+        onSignUp={multi.signUp}
+        onSignOut={multi.signOut}
         onClearAuthError={multi.clearAuthError}
         chatMessages={multi.messages}
         onSendMessage={multi.sendMessage}

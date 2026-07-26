@@ -176,12 +176,12 @@ export function Leaderboard() {
 
       {tab === 'wins' && data && data.wins.length > 0 && (
         <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 8 }}>
-          Tracked by PIN account · guest wins not counted
+          Tracked by account · guest wins not counted
         </div>
       )}
       {tab === 'elo' && data && data.elo && data.elo.length > 0 && (
         <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 8 }}>
-          ELO rating · PIN accounts with ≥3 games
+          ELO rating · accounts with ≥3 games
         </div>
       )}
     </div>
