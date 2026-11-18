@@ -172,8 +172,21 @@ export function liveOuts(m: ArrayLike<number>, live: Uint8Array): number {
  * could make one -- two other cards of the rank, or two neighbours in suit --
  * the pair is dead if either is buried in the pile or in our own hand, live if
  * both are unseen, and partial or complete if we watched them take one or both.
+ *
+ * `read`, when given, is how much more likely than the background odds each
+ * unseen card is to be in their hand (0 = nothing known, 1 = certain), from a
+ * searcher's inference. An unseen partner then counts as that fraction of a
+ * known one, so a card that would finish a run they almost surely hold is
+ * dangerous even though nobody watched them pick the run up. Without a read
+ * every unseen card counts as 0 and this is exactly the public-only rule.
  */
-export function dangerOf(seen: Seen, card: number, p: ExpertParams, scratch: Uint8Array): number {
+export function dangerOf(
+  seen: Seen,
+  card: number,
+  p: ExpertParams,
+  scratch: Uint8Array,
+  read: ArrayLike<number> | null = null
+): number {
   const pub = seen.pub;
   const them = seen.seat === 0 ? 1 : 0;
   const taken = pub.taken[them];
@@ -194,10 +207,12 @@ export function dangerOf(seen: Seen, card: number, p: ExpertParams, scratch: Uin
     const x = status[a];
     const y = status[b];
     if (x === 0 || y === 0) return;
-    const known = (x === 2 ? 1 : 0) + (y === 2 ? 1 : 0);
-    if (known === 2) complete++;
-    else if (known === 1) partial++;
-    else live++;
+    // Chance each partner is theirs: 1 if watched in, else the read (or 0).
+    const pa = x === 2 ? 1 : read ? read[a] : 0;
+    const pb = y === 2 ? 1 : read ? read[b] : 0;
+    complete += pa * pb;
+    partial += pa + pb - 2 * pa * pb;
+    live += (1 - pa) * (1 - pb);
   };
   // Sets: any two of the other three of this rank.
   const others: number[] = [];
@@ -221,7 +236,7 @@ export function dangerOf(seen: Seen, card: number, p: ExpertParams, scratch: Uin
   safe += passed[card];
 
   const raw =
-    p.dComplete * (complete > 0 ? 1 : 0) + p.dPartial * partial + p.dLive * live - p.dSafe * safe;
+    p.dComplete * Math.min(1, complete) + p.dPartial * partial + p.dLive * live - p.dSafe * safe;
   return p.danger * Math.max(0, raw);
 }
 
@@ -249,6 +264,8 @@ export interface ExpertPolicy extends Policy {
   rank(seen: Seen): { card: number; score: number }[];
   /** Set the card taken from the pile this turn (so it is not thrown straight back). */
   took(card: number): void;
+  /** Hand it a searcher's read of the opponent (see `dangerOf`), or null to drop it. */
+  setRead(read: ArrayLike<number> | null): void;
 }
 
 /** Build the policy. `next` is only used when `noise` is above zero. */
@@ -258,6 +275,7 @@ export function expert(params: ExpertParams, next: () => number = Math.random, n
   const scratch = new Uint8Array(40);
   const work = new Int32Array(4);
   let justTook = -1;
+  let read: ArrayLike<number> | null = null;
 
   /** Value of keeping `m` (lower is better). */
   function keepScore(m: ArrayLike<number>, frac: number): number {
@@ -277,7 +295,7 @@ export function expert(params: ExpertParams, next: () => number = Math.random, n
       work[s] &= ~bit;
       let v = keepScore(work, frac);
       work[s] |= bit;
-      if (p.danger > 0) v += dangerOf(seen, c, p, scratch);
+      if (p.danger > 0) v += dangerOf(seen, c, p, scratch, read);
       out.push({ card: c, score: v });
     }
     return out.sort((a, b) => a.score - b.score || POINTS[b.card] - POINTS[a.card]);
@@ -326,6 +344,9 @@ export function expert(params: ExpertParams, next: () => number = Math.random, n
     rank,
     took(card) {
       justTook = card;
+    },
+    setRead(r) {
+      read = r;
     },
     begin() {
       justTook = -1;
@@ -389,7 +410,7 @@ export function expert(params: ExpertParams, next: () => number = Math.random, n
         work[s] &= ~bit;
         let v = keepScore(work, frac);
         work[s] |= bit;
-        if (p.danger > 0) v += dangerOf(seen, c, p, scratch);
+        if (p.danger > 0) v += dangerOf(seen, c, p, scratch, read);
         // Ties to the dearer card: it is the one that hurts if they knock.
         if (v < bestScore - 1e-9 || (Math.abs(v - bestScore) <= 1e-9 && POINTS[c] > POINTS[bestCard])) {
           bestScore = v;

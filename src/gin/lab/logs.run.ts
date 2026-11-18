@@ -36,7 +36,7 @@ interface Record {
 }
 
 const args = process.argv.slice(2);
-const plain = positional(args, ['--review', '--all']);
+const plain = positional(args, ['--review', '--all', '--no-read']);
 const file = plain[0] ?? 'logs/gin-hands.jsonl';
 const reviewing = args.includes('--review');
 const verbose = args.includes('--all');
@@ -137,7 +137,7 @@ function main(): void {
   const all: { r: Record; m: Moment }[] = [];
   const started = Date.now();
   for (const g of good) {
-    for (const m of analyzeAll(g.r, { rollout: saved('release'), worlds, check })) {
+    for (const m of analyzeAll(g.r, { rollout: saved('release'), worlds, check, readRollouts: !args.includes('--no-read') })) {
       counts.set(m.verdict, (counts.get(m.verdict) ?? 0) + 1);
       if (m.verdict !== 'best' && m.verdict !== 'close' && m.verdict !== 'forced') cost += m.cost;
       all.push({ r: g.r, m });

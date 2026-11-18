@@ -13,6 +13,7 @@ import { PANEL, type Spec, specName } from './panel';
  *      `-eq`       score rollouts in match equity rather than points
  *      `@name`     roll out with that saved expert (`champion-eq@expert-v4`)
  *      `:pN`       N particles in its inference (`champion-eq:p4000`)
+ *      `+read`     share the inference with its own rollouts (`champion-eq+read`)
  *      `-uniform`  ablation: ignore the inference, guess their hand uniformly
  */
 export const CHAMPIONS_DIR = 'src/gin/lab/champions';
@@ -58,6 +59,8 @@ export function resolve(name: string, settings: SearchSettings = DEFAULT_SEARCH)
       rollout: saved(name.includes('@') ? name.split('@')[1].split(':')[0] : settings.rollout),
       equity: name.includes('-eq') ? loadEquity() : null,
       uniform: name.includes('-uniform'),
+      // `champion+read`: our side of the rollouts uses the inference for discard danger.
+      readRollouts: name.includes('+read'),
       name,
     };
     return { kind: 'champion', options };

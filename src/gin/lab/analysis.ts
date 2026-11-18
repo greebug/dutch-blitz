@@ -100,6 +100,15 @@ export interface AnalysisOptions {
   width?: number;
   /** Randomness for the search and the inference; the deal's seed by default. */
   seed?: number;
+  /**
+   * Our side of the play-outs uses the inference for discard danger
+   * (ChampionOptions.readRollouts). On by default: without it a move can be
+   * charged for a later throw into a meld the champion already knows they
+   * hold, which the person would not make. Measured neutral for the bot's own
+   * strength (+0.07 +/- 0.07 points per hand over 30,000 hands), so Hard
+   * itself is unchanged; it is the review that needed it.
+   */
+  readRollouts?: boolean;
 }
 
 export interface Progress {
@@ -587,6 +596,7 @@ export function* analyzeHand(hand: HandForAnalysis, opts: AnalysisOptions): Gene
     equity: null,
     confidence: 0,
     seed: opts.seed ?? hand.seed,
+    readRollouts: opts.readRollouts ?? true,
     actual: {
       draw: () => (current.type === 'draw' ? current.from === 'discard' : null),
       throw: () => (current.type === 'draw' ? null : code(current)),

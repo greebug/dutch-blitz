@@ -121,3 +121,32 @@ under many seeds to show this), and an error must clear 2.5 standard errors.
 npx tsx src/gin/lab/probe.run.ts MATCH HAND TURN throw --opponents --their-reply
 npx tsx src/gin/lab/deepreview.run.ts MATCH HAND TURN 600 1500 8000 --runs 6
 ```
+
+## The dead King: rollouts that ignore what the search knows
+
+A live review (match `mwltfyo6-205we5`, hand 1, turn 4) called throwing a dead
+King of swords an inaccuracy (1.9 points): the champion preferred throwing a 4
+and keeping a King that could never meld for either side. Taking it apart:
+
+- The champion's read of the opponent was right (Jack, Horse and King of
+  goblets, 95%+), and it knew the King was dead.
+- But the "us" in its play-outs is the public-only expert. In the line that
+  threw the King, that expert went on to throw the 7 of goblets into the
+  goblet run it had no way to see; the opponent took it 37% of the time
+  against 19% in the other line. A rollout player that refuses that one throw
+  cut the gap from 1.6 to 0.9.
+
+The fix is `readRollouts`: before a search the champion hands its inference to
+its own side of the rollouts (and the candidate-proposing expert), as a "read"
+-- how far each unseen card's chance of being theirs rises above the
+background odds. `dangerOf` counts an unseen meld partner as that fraction of
+a watched one; with no information it is exactly the old public-only rule
+(tested).
+
+Measured for strength, `champion-eq@expert-v4:p4000+read` against the release
+Hard settings: **+0.07 +/- 0.07 points per hand over 30,000 mirrored hands** --
+neutral. So Hard plays as before, and the review uses it by default
+(`lab:logs --review --no-read` for the old behaviour). Re-reviewing the live
+match with it dropped both disputed "dead card" verdicts (the King of swords,
+and a King-of-goblets coin flip) out of the error list, while the real errors
+kept their cost.

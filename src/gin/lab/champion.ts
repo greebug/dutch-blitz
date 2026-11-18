@@ -77,6 +77,15 @@ export interface ChampionOptions {
    */
   uniform?: boolean;
   /**
+   * Share the inference with our own side of the rollouts (and the expert that
+   * proposes candidates), so the "us" being played out avoids throwing cards
+   * that finish melds the opponent very probably holds -- which the search
+   * already knows about but the public-only expert does not. Without it a line
+   * that leads to a dangerous discard a turn later is charged for a mistake
+   * the real player would not make.
+   */
+  readRollouts?: boolean;
+  /**
    * Told about every searched decision: the candidates (for a draw, 1 = take
    * the upcard and 0 = draw blind; for a throw, the move codes), each one's
    * value relative to the first, and which was chosen. For review tools.
@@ -156,11 +165,42 @@ function holdsAll(live: Inference): number[] {
   return Array.from({ length: 40 }, (_, c) => holdsChanceOf(live, c));
 }
 
+/**
+ * The inference as the expert's danger rule wants it: for each card we cannot
+ * see, how far its chance of being in their hand rises above the background
+ * odds, scaled to 0..1. Cards we know about are 0 (the rule handles those from
+ * the public record). Uninformative inference gives all zeros, which is the
+ * plain public-only rule.
+ */
+export function readOf(seen: Seen, live: Inference): Float64Array {
+  const out = new Float64Array(40);
+  const pub = seen.pub;
+  const them = seen.seat === 0 ? 1 : 0;
+  const unseen: number[] = [];
+  const visible = new Uint8Array(40);
+  for (const c of seen.hand) visible[c] = 1;
+  for (const c of pub.pile) visible[c] = 1;
+  for (let c = 0; c < 40; c++) if (!visible[c] && !pub.taken[them][c]) unseen.push(c);
+  if (!unseen.length) return out;
+  const h = unseen.map((c) => holdsChanceOf(live, c));
+  const prior = h.reduce((a, x) => a + x, 0) / h.length;
+  if (prior >= 1) return out;
+  unseen.forEach((c, i) => (out[c] = Math.max(0, Math.min(1, (h[i] - prior) / (1 - prior)))));
+  return out;
+}
+
 export function champion(options: ChampionOptions): Policy {
   const next = rng(options.seed ?? 12345);
   const me = expert(options.rollout, next, 'roll-me');
   const them = expert(options.rollout, next, 'roll-them');
   const guide = expert(options.rollout, next, 'guide');
+  /** Hand the read to our side before a search; see `readRollouts`. */
+  const share = (seen: Seen, live: Inference) => {
+    if (!options.readRollouts) return;
+    const read = readOf(seen, live);
+    me.setRead(read);
+    guide.setRead(read);
+  };
   let inf: Inference | null = null;
   let seat: 0 | 1 = 0;
   /** The upcard when the opponent's turn began. */
@@ -364,6 +404,7 @@ export function champion(options: ChampionOptions): Policy {
     },
     draw(seen) {
       const live = sync(seen);
+      share(seen, live);
       const pub = seen.pub;
       const top = pub.pile[pub.pile.length - 1];
       tookTop = -1;
@@ -395,6 +436,7 @@ export function champion(options: ChampionOptions): Policy {
     },
     throw(seen) {
       const live = sync(seen);
+      share(seen, live);
       // Our draw, as far as the filter is concerned.
       if (tookTop >= 0) weDraw(live, tookTop, true);
       else {
