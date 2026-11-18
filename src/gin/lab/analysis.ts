@@ -6,6 +6,8 @@ import { type Ends, type Explanation, champion } from './champion';
 import { type ExpertParams, expert, liveOuts } from './expert';
 import { makePolicy } from './panel';
 import { rng } from '../cards';
+import { type Equity, buildEquity, equityAt } from './equity';
+import margins from './champions/margins.json';
 import { BIG_GIN, KNOCK, POINTS, type Policy, type Public, blankPublic, deadwoodOf, deadwoodWithout, masksOf } from './fast';
 
 /**
@@ -48,6 +50,14 @@ export interface HandForAnalysis {
    * that does just that. Bot by default.
    */
   opponent?: 'bot' | 'human';
+  /**
+   * The match score going into this hand, when the hand was part of a match
+   * with a target. Then every decision is judged on the chance of winning the
+   * MATCH, as the Hard bot plays it: at 86-46 in a match to 100, a sure small
+   * knock that ends the match beats chasing a bigger gin, though the gin
+   * scores more on average. Without it, decisions are judged in points.
+   */
+  match?: { you: number; them: number; target: number };
 }
 
 export type Verdict = 'best' | 'close' | 'inaccuracy' | 'mistake' | 'blunder' | 'forced';
@@ -87,6 +97,11 @@ export interface Moment {
   /** Worlds behind `cost`. */
   worlds: number;
   odds?: { yours: Odds; best: Odds };
+  /**
+   * Judged on the match: the chance of winning it after each move, and the
+   * score it was judged at. `cost` is then that gap in points at this score.
+   */
+  match?: { you: number; them: number; target: number; yours: number; best: number };
   why: string[];
 }
 
@@ -127,6 +142,15 @@ const TIE = 0.1;
  * itself a random cloud, and a review that cries wolf teaches nothing.
  */
 const SIGNIFICANT = 2.5;
+/**
+ * Noise the replay's own error bar does not see, in points: reviewing the
+ * same decision under ten different seeds moved the verdict by 0.4-0.8 points
+ * between runs (deepreview.run.ts, seven disputed live positions), against
+ * reported error bars of 0.3-0.5. The difference is the inference -- each run
+ * samples the opponent's hand from its own random cloud. Added in quadrature,
+ * so a gap must clear both before it is called an error.
+ */
+const MODEL_NOISE = 0.45;
 const INACCURACY = 2;
 const MISTAKE = 5;
 
@@ -145,9 +169,9 @@ function code(action: GinAction): number | null {
 
 const the = (c: number) => `the ${describe(cardFromIndex(c))}`;
 
-function list(items: string[]): string {
+function list(items: string[], joiner = 'and'): string {
   if (items.length <= 1) return items.join('');
-  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+  return `${items.slice(0, -1).join(', ')} ${joiner} ${items[items.length - 1]}`;
 }
 
 const pct = (x: number) => `${Math.round(100 * x)}%`;
@@ -250,17 +274,21 @@ function partnerPairs(card: number): [number, number][] {
 }
 
 /** How a throw of `card` reads against their pickups: the cards of theirs it would join. */
-function feeds(scene: Scene, card: number): { cards: number[]; complete: boolean } {
+function feeds(scene: Scene, card: number): { cards: number[]; complete: boolean; needs: number[] } {
   const st = statusOf(scene, card);
   const cards = new Set<number>();
+  /** For a half-made meld: the unseen cards that would still finish it. */
+  const needs = new Set<number>();
   let complete = false;
   for (const [a, b] of partnerPairs(card)) {
     if (st[a] === 0 || st[b] === 0) continue;
     if (st[a] === 2 && st[b] === 2) complete = true;
     if (st[a] === 2) cards.add(a);
     if (st[b] === 2) cards.add(b);
+    if (st[a] === 2 && st[b] === 1) needs.add(b);
+    if (st[b] === 2 && st[a] === 1) needs.add(a);
   }
-  return { cards: [...cards], complete };
+  return { cards: [...cards], complete, needs: [...needs] };
 }
 
 /** True when every pair that could meld with `card` is already broken. */
@@ -388,6 +416,31 @@ function playoutReasons(scene: Scene, x: number, y: number): string[] {
   return out;
 }
 
+/**
+ * A card they picked up that our hand has since made nearly useless to them,
+ * and that the card we are keeping could use: they are likely to throw it
+ * back, and then it is ours. The mirror image of feeding a pickup -- and when
+ * both are true, this is usually the one that matters (a live match had them
+ * throw the King back in 91% of the play-outs, finishing our set 85% of the
+ * time).
+ */
+function comeback(scene: Scene, keep: number, thrown: number): { pickup: number; blockers: number[] } | null {
+  const kept = without(scene.masks, thrown);
+  for (const p of scene.pickups.keys()) {
+    if (!partnerPairs(keep).some(([a, b]) => a === p || b === p)) continue;
+    // Their ways to meld it: pairs whose partners are neither ours nor in the pile.
+    const st = statusOf(scene, p);
+    const pairs = partnerPairs(p);
+    if (pairs.filter(([a, b]) => st[a] !== 0 && st[b] !== 0).length > 1) continue;
+    // And it would meld for us, with the card kept.
+    const withP = withCard(kept, p);
+    if (deadwoodOf(withP) >= deadwoodOf(kept) + POINTS[p]) continue;
+    const blockers = [...new Set(pairs.flat().filter((c) => scene.hand.includes(c) && c !== thrown))];
+    return { pickup: p, blockers };
+  }
+  return null;
+}
+
 function whyThrow(scene: Scene, mine: number, best: number, check: Moment['odds'], their: string): string[] {
   const out: string[] = [];
   const knocking = best >= KNOCK || best === BIG_GIN;
@@ -437,14 +490,30 @@ function whyThrow(scene: Scene, mine: number, best: number, check: Moment['odds'
   const y = best >= KNOCK ? best - KNOCK : best;
   if (x === y || x < 0 || y < 0) return out;
 
+  // 0. A pickup of theirs that is stuck, and that the card you threw would have used.
+  const back = comeback(scene, x, y);
+  if (back) {
+    const by = back.blockers.length ? ` with ${list(back.blockers.map(the))} in your hand` : '';
+    out.push(
+      `They picked up ${the(back.pickup)}, but${by} it has almost nothing left to meld with for them, ` +
+        `so they are likely to throw it back — and keeping ${the(x)} is what lets you use it when they do.`
+    );
+  }
+
   // 1. Feeding their pickups.
   const fx = feeds(scene, x);
   const fy = feeds(scene, y);
-  if (fx.cards.length && (fx.cards.length > fy.cards.length || (fx.complete && !fy.complete))) {
+  if (!back && fx.cards.length && (fx.cards.length > fy.cards.length || (fx.complete && !fy.complete))) {
     const what = fx.cards.map((c) => `${the(c)} ${when(scene, scene.pickups.get(c)!)}`);
     out.push(
       `They picked up ${list(what)}; ${the(x)} ${fx.complete ? 'completes a meld with' : 'fits with'} ` +
-        `${fx.cards.length > 1 ? 'those' : 'it'}${fx.complete ? '' : ' if they find one more card'}.`
+        `${fx.cards.length > 1 ? 'those' : 'it'}${
+          fx.complete
+            ? ''
+            : fx.needs.length === 1
+              ? `, and ${the(fx.needs[0])} would finish it (the only card left that can)`
+              : ` if they also find ${list(fx.needs.map(the), 'or')}`
+        }.`
     );
   }
 
@@ -560,21 +629,88 @@ function whyDraw(scene: Scene, mine: number, check: Moment['odds']): string[] {
       out.push(`Taking it and throwing ${the(throwAfter)} would have dropped your deadwood from ${before} to ${after}.`);
     }
   } else {
-    if (!melds) out.push(`${cap(the(up))} didn't make a meld with anything you held.`);
-    out.push(
-      `Taking from the pile tells them what you are collecting; ` +
-        `a blind draw gives nothing away${melds ? '' : ' and is a fresh shot at a card you need'}.`
-    );
+    // They took it; drawing blind was better.
+    const canKnock = after <= scene.pub.rules.knockMaxDeadwood;
+    if (canKnock && check) {
+      out.push(
+        `Taking it let you knock at once on ${after}, which won the hand ${pct(check.yours.win)} of the time ` +
+          `but for less: drawing blind kept your gin chances and averaged ${signed(check.best.mean)} points ` +
+          `against ${signed(check.yours.mean)}.`
+      );
+    } else if (!melds) {
+      out.push(`${cap(the(up))} didn't make a meld with anything you held.`);
+    }
+    // Only worth saying when the meld it shows them could still grow: four of
+    // a kind, or a run with both ends gone, gives nothing away.
+    if (!canKnock && (!melds || growable(scene, up, throwAfter))) {
+      out.push(
+        `Taking from the pile tells them what you are collecting; ` +
+          `a blind draw gives nothing away${melds ? '' : ' and is a fresh shot at a card you need'}.`
+      );
+    }
+    out.push(...drawPlayout(scene));
     const outs = liveOuts(scene.masks, unseen(scene, scene.hand));
-    if (!melds && outs > 0) out.push(`There were ${outs} unseen cards that would make you a meld.`);
+    if (!melds && outs > 0 && out.length < 3) out.push(`There were ${outs} unseen cards that would make you a meld.`);
   }
   void check;
+  return out;
+}
+
+/** Whether the meld the upcard makes could still take another unseen card. */
+function growable(scene: Scene, up: number, throwAfter: number): boolean {
+  const kept = [...scene.hand.filter((c) => c !== throwAfter), up].map(cardFromIndex);
+  const u = cardFromIndex(up);
+  const meld = meldsOf(kept).melds.find((m) => m.cards.some((c) => c.suit === u.suit && c.rank === u.rank));
+  if (!meld) return true;
+  const live = unseen(scene, scene.hand);
+  live[up] = 0;
+  const idx = meld.cards.map(cardIndex);
+  if (meld.kind === 'set') return idx.length < 4 && [0, 1, 2, 3].some((s) => live[s * 10 + (up % 10)] === 1);
+  const lo = Math.min(...idx);
+  const hi = Math.max(...idx);
+  return (lo % 10 > 0 && live[lo - 1] === 1) || (hi % 10 < 9 && live[hi + 1] === 1);
+}
+
+/** What the play-outs saw, for a draw: [drawing blind, taking it]. */
+function drawPlayout(scene: Scene): string[] {
+  const out: string[] = [];
+  if (!scene.ends) return out;
+  const [blind, took] = scene.ends;
+  if (blind.gin - took.gin >= 0.04) {
+    out.push(`Drawing blind, you went gin in ${pct(blind.gin)} of the play-outs; taking it, ${pct(took.gin)}.`);
+  }
+  const tb = blind.theyKnock + blind.theyGin;
+  const tt = took.theyKnock + took.theyGin;
+  if (tt - tb >= 0.03) {
+    out.push(`They got down first in ${pct(tt)} of the play-outs after you took it, against ${pct(tb)} drawing blind.`);
+  }
   return out;
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 // ---------------------------------------------------------------------------
+
+const equities = new Map<number, Equity>();
+function equityFor(target: number): Equity {
+  let e = equities.get(target);
+  if (!e) {
+    e = buildEquity(new Map(Object.entries(margins as Record<string, number>).map(([m, q]) => [Number(m), q])), target);
+    equities.set(target, e);
+  }
+  return e;
+}
+
+/**
+ * What one point is worth in match equity at this score, so a gap in match
+ * chances can be quoted on the usual points scale. Measured over a dozen
+ * points either way; floored so a decided match does not divide by nothing.
+ */
+function pointWorth(e: Equity, you: number, them: number, weOpenNext: boolean): number {
+  const up = equityAt(e, you + 12, them, weOpenNext);
+  const down = equityAt(e, you, them + 12, weOpenNext);
+  return Math.max(0.002, (up - down) / 24);
+}
 
 /**
  * Analyse one finished hand, yielding as each of the person's decisions is
@@ -593,10 +729,10 @@ export function* analyzeHand(hand: HandForAnalysis, opts: AnalysisOptions): Gene
     width: opts.width ?? 5,
     particles: opts.particles ?? 8000,
     rollout: opts.rollout,
-    equity: null,
     confidence: 0,
     seed: opts.seed ?? hand.seed,
     readRollouts: opts.readRollouts ?? true,
+    equity: hand.match ? equityFor(hand.match.target) : null,
     actual: {
       draw: () => (current.type === 'draw' ? current.from === 'discard' : null),
       throw: () => (current.type === 'draw' ? null : code(current)),
@@ -613,7 +749,14 @@ export function* analyzeHand(hand: HandForAnalysis, opts: AnalysisOptions): Gene
         })()
       : {}),
   });
-  const player = seated(policy);
+  const scores: [number, number] | null = hand.match
+    ? seat === 0
+      ? [hand.match.you, hand.match.them]
+      : [hand.match.them, hand.match.you]
+    : null;
+  const player = seated(policy, scores && hand.match ? () => ({ scores, target: hand.match!.target }) : undefined);
+  // Seat 0 opened this hand, so seat 1 opens the next.
+  const worth = hand.match ? pointWorth(equityFor(hand.match.target), hand.match.you, hand.match.them, seat === 1) : 1;
   let state = deal(hand.seed);
   player.begin!(seat, state.hands[seat], state.discard[state.discard.length - 1], state.stock.length);
 
@@ -661,11 +804,19 @@ export function* analyzeHand(hand: HandForAnalysis, opts: AnalysisOptions): Gene
           const pair = info.check
             ? { best: info.check.samples[0], mine: info.check.samples[1] }
             : { best: info.samples[info.chosen], mine: info.samples[info.moves.indexOf(mine)] ?? [] };
-          const d = paired(pair.best, pair.mine);
+          const raw = paired(pair.best, pair.mine);
+          // In a match the samples are chances of winning it; quote the gap in
+          // points at this score, and take the odds from the hand's points.
+          const d = { mean: raw.mean / worth, se: Math.hypot(raw.se / worth, MODEL_NOISE), n: raw.n };
           moment.cost = d.mean;
           moment.se = d.se;
           moment.worlds = d.n;
-          moment.odds = { yours: odds(pair.mine), best: odds(pair.best) };
+          const pts = hand.match ? info.check?.margins : { 0: pair.best, 1: pair.mine };
+          if (pts) moment.odds = { yours: odds(pts[1]), best: odds(pts[0]) };
+          if (hand.match) {
+            const avg = (xs: number[]) => xs.reduce((a, x) => a + x, 0) / Math.max(1, xs.length);
+            moment.match = { ...hand.match, yours: avg(pair.mine), best: avg(pair.best) };
+          }
           const c = d.mean;
           moment.verdict =
             c <= TIE

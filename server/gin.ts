@@ -94,6 +94,8 @@ interface GinTable {
   target: number | null;
   /** The table seat that reached the target, until the next deal starts a new match. */
   matchWinner: Seat | null;
+  /** The running score as the last finished hand began, for that hand's review. */
+  lastBefore: [number, number];
   /** Names this match in the hand log; a new one starts with every new match. */
   matchId: string;
   /** Every deal made at this table, pushes included. Its parity is who opens. */
@@ -224,7 +226,12 @@ export function attachGin(io: Server, deps: GinDeps): Namespace {
     const seat = engineSeat(table, p.seat);
     const view = viewFor(state, seat);
     if (state.phase !== 'over') return { view };
-    return { view, replay: { seed: state.seed, humanSeat: seat, history: state.history } };
+    // The score going into the hand, so the review can judge it on the match.
+    const match =
+      table.target === null
+        ? undefined
+        : { you: table.lastBefore[p.seat], them: table.lastBefore[other(p.seat)], target: table.target };
+    return { view, replay: { seed: state.seed, humanSeat: seat, history: state.history, match } };
   }
 
   function fail(socket: Socket, message: string) {
@@ -251,6 +258,7 @@ export function attachGin(io: Server, deps: GinDeps): Namespace {
    */
   function recordHand(table: GinTable, state: GinState) {
     table.handsPlayed += 1;
+    table.lastBefore = [table.running[0], table.running[1]];
     logFinished(table, state);
     const score = state.score;
     if (!score || score.winner === null) return;
@@ -392,6 +400,7 @@ export function attachGin(io: Server, deps: GinDeps): Namespace {
         target: target === undefined ? DEFAULT_TARGET : target,
         matchWinner: null,
         matchId: `${code}-${Date.now().toString(36)}`,
+        lastBefore: [0, 0],
         deals: 0,
         flipped: false,
         touchedAt: Date.now(),

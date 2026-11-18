@@ -36,7 +36,9 @@ interface Record {
 }
 
 const args = process.argv.slice(2);
-const plain = positional(args, ['--review', '--all', '--no-read']);
+const plain = positional(args, ['--review', '--all', '--no-read', '--points']);
+const matchAt = args.indexOf('--match');
+const onlyMatch = matchAt >= 0 ? args[matchAt + 1] : null;
 const file = plain[0] ?? 'logs/gin-hands.jsonl';
 const reviewing = args.includes('--review');
 const verbose = args.includes('--all');
@@ -71,7 +73,7 @@ function main(): void {
     .filter(Boolean)
     .map((line) => JSON.parse(line))
     // Two-player hands (level "human") have no bot seat; this report is about the bots.
-    .filter((r: Record) => r.level !== 'human' && (!onlyLevel || r.level === onlyLevel));
+    .filter((r: Record) => r.level !== 'human' && (!onlyLevel || r.level === onlyLevel) && (!onlyMatch || r.matchId === onlyMatch));
   const good: { r: Record; s: GinState }[] = [];
   for (const r of records) {
     const s = replay(r);
@@ -137,7 +139,9 @@ function main(): void {
   const all: { r: Record; m: Moment }[] = [];
   const started = Date.now();
   for (const g of good) {
-    for (const m of analyzeAll(g.r, { rollout: saved('release'), worlds, check, readRollouts: !args.includes('--no-read') })) {
+    // Judged on the match score unless --points: see HandForAnalysis.match.
+    const match = !args.includes('--points') && g.r.target ? { you: g.r.before.you, them: g.r.before.bot, target: g.r.target } : undefined;
+    for (const m of analyzeAll({ ...g.r, match }, { rollout: saved('release'), worlds, check, readRollouts: !args.includes('--no-read') })) {
       counts.set(m.verdict, (counts.get(m.verdict) ?? 0) + 1);
       if (m.verdict !== 'best' && m.verdict !== 'close' && m.verdict !== 'forced') cost += m.cost;
       all.push({ r: g.r, m });

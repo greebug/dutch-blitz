@@ -150,3 +150,31 @@ neutral. So Hard plays as before, and the review uses it by default
 match with it dropped both disputed "dead card" verdicts (the King of swords,
 and a King-of-goblets coin flip) out of the error list, while the real errors
 kept their cost.
+
+## Judged on the match, and honest error bars (second batch of live disputes)
+
+Seven more disputed verdicts from four live matches, each re-reviewed under
+ten different seeds (`deepreview.run.ts`), led to three changes:
+
+- **Match equity.** At 86-46 in a match to 100 the review called taking a 7 to
+  knock at once a mistake, because drawing blind for gin averaged more points
+  (+13.8 vs +9.6) -- though the knock won the hand 91% of the time against
+  65%, and 14 points ended the match. The Hard bot already plays in match
+  equity; now the review does too whenever the score is known
+  (`HandForAnalysis.match`), quoting the gap in points at that score via the
+  local value of a point (`pointWorth`). That verdict is now "best" under
+  every seed. `lab:logs --points` gives the old behaviour.
+- **Model noise.** Re-running a review moved its verdicts by 0.4-0.8 points,
+  against reported error bars of 0.3-0.5: the particle filter's own
+  randomness, which the replay's standard error cannot see. `MODEL_NOISE`
+  (0.45 points) is added in quadrature before the 2.5-sigma test, which turned
+  two coin flips (mean costs 0.54 and 0.64 over ten seeds) back into close
+  calls while every robust error (2.5-4.3 over ten seeds) stayed flagged.
+- **Explanations.** A review said a King "fits with" a King they had picked
+  up. True, but backwards: our Horse had killed their run, so their King was
+  stuck, and in the play-outs they threw it back 91% of the time and we made
+  Kings 85% of the time -- by keeping ours. `comeback()` now names that
+  pattern before the feeding check. Feeding lines name the exact card still
+  needed; "taking tells them what you collect" is only said when the meld
+  shown could still grow; and a take that knocks at once is described as
+  what it is, a surer smaller win.

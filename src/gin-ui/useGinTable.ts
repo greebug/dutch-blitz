@@ -47,6 +47,8 @@ export interface Replay {
   /** The engine seat you played this hand from. It alternates with the opener. */
   humanSeat: Seat;
   history: GinAction[];
+  /** The score going into the hand, when the table plays to a target. */
+  match?: { you: number; them: number; target: number };
 }
 
 /** Shared with the Blitz lobby: same origin, same person, same name box. */

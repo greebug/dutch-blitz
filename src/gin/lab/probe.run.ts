@@ -81,11 +81,13 @@ function run(label: string, rollout: ExpertParams, extra: Partial<ChampionOption
     worlds: 6,
     check: 0,
     width: 5,
-    particles: 800,
+    // Same read of the opponent as the in-game review.
+    particles: flag('--particles', 8000),
     rollout,
     equity: null,
     confidence: 0,
     seed: r.seed,
+    readRollouts: !args.includes('--no-read'),
     ...extra,
     actual: {
       draw: () => (current.type === 'draw' ? current.from === 'discard' : null),

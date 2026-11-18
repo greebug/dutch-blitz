@@ -278,7 +278,14 @@ export default function GinSolo() {
           opponentLabel={`The ${opponentName.toLowerCase()}`}
           onNext={matchOver ? () => newMatch() : nextHand}
           nextLabel={matchOver ? 'New match' : undefined}
-          onAnalyze={() => setReview({ seed: state.seed, humanSeat: you, history: state.history.slice() })}
+          onAnalyze={() =>
+            setReview({
+              seed: state.seed,
+              humanSeat: you,
+              history: state.history.slice(),
+              match: { you: hand.before.you, them: hand.before.bot, target: TARGET },
+            })
+          }
           note={
             matchOver
               ? `${matchOver === 'you' ? 'You win the match' : `${opponentName} wins the match`}, ${tally}`

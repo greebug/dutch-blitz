@@ -136,6 +136,12 @@ export interface Explanation {
     takes?: [number, number];
     /** How the replayed hands ended, as shares of the worlds, for each of the two moves. */
     ends?: [Ends, Ends];
+    /**
+     * Raw points to us in each replayed world. The same as `samples` when scoring
+     * in points; when scoring in match equity, `samples` are chances of winning
+     * the match and these are the hand's points behind them.
+     */
+    margins?: [number[], number[]];
   };
   /** Review mode: the chance, per card index, that the opponent holds it, from the inference. */
   holds?: number[];
@@ -316,6 +322,7 @@ export function champion(options: ChampionOptions): Policy {
         rollout(t);
         out[k].push(value(t, scores));
         if (phase === 'check') {
+          lastMargins[k].push(seat === 0 ? t.margin : -t.margin);
           const e = lastEnds[k];
           const gin = t.outcome === 'gin' || t.outcome === 'big-gin';
           if (t.knocker === null) e.push++;
@@ -367,6 +374,7 @@ export function champion(options: ChampionOptions): Policy {
   let lastSamples: number[][] = [];
   let lastTakes: number[] = [0, 0];
   let lastEnds: Ends[] = [blankEnds(), blankEnds()];
+  let lastMargins: number[][] = [[], []];
 
   /** Review mode: the independent replay of the chosen move against the one actually played. */
   function checked(
@@ -383,12 +391,14 @@ export function champion(options: ChampionOptions): Policy {
     const pair = [chosen, k];
     lastTakes = [0, 0];
     lastEnds = [blankEnds(), blankEnds()];
+    lastMargins = [[], []];
     const s = sample(seen, live, 2, (t, i) => apply(t, pair[i]), options.check, 'check');
     const n = Math.max(1, s[0].length);
     return {
       moves: [moves[chosen], played],
       samples: [s[0], s[1]],
       takes: [lastTakes[0] / n, lastTakes[1] / n],
+      margins: [lastMargins[0], lastMargins[1]],
       ends: lastEnds.map((e) => {
         const share = blankEnds();
         for (const key of Object.keys(e) as (keyof Ends)[]) share[key] = e[key] / n;

@@ -8,17 +8,41 @@ import { saved } from './registry';
  * to see how much a verdict moves with the noise the standard error does not
  * count (the particle filter's own randomness, and the search's shortlist).
  *
- *   npx tsx src/gin/lab/deepreview.run.ts MATCH HAND TURN [worlds check particles] [--runs n]
+ *   npx tsx src/gin/lab/deepreview.run.ts MATCH HAND TURN [--runs n] [--file F] [--draw]
+ *       [--worlds n] [--check n] [--particles n] [--points]
+ *
+ * Defaults are the in-game review's own settings, judged on the match score
+ * unless --points.
  */
 const a = process.argv.slice(2);
 const [matchId, hand, turn] = a;
-const [w, c, p] = [a[3], a[4], a[5]].map((x, i) => Number(x ?? [300, 400, 800][i]));
-const runs = a.includes('--runs') ? Number(a[a.indexOf('--runs') + 1]) : 6;
-const r = readFileSync('logs/gin-hands.jsonl', 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).find((x) => x.matchId === matchId && String(x.hand) === hand);
+const opt = (name: string, d: number) => (a.includes(name) ? Number(a[a.indexOf(name) + 1]) : d);
+const runs = opt('--runs', 6);
+const worlds = opt('--worlds', 600);
+const check = opt('--check', 1500);
+const particles = opt('--particles', 8000);
+const file = a.includes('--file') ? a[a.indexOf('--file') + 1] : 'logs/gin-hands.jsonl';
+const kind = a.includes('--draw') ? 'draw' : 'throw';
+
+const r = readFileSync(file, 'utf8')
+  .split(/\r?\n/)
+  .filter(Boolean)
+  .map((l) => JSON.parse(l))
+  .find((x) => x.matchId === matchId && String(x.hand) === hand);
+if (!r) throw new Error('no such hand');
+const match = !a.includes('--points') && r.target ? { you: r.before.you, them: r.before.bot, target: r.target } : undefined;
+
 const t0 = Date.now();
+const costs: number[] = [];
 for (let k = 0; k < runs; k++) {
-  const ms = analyzeAll(r, { rollout: saved('release'), worlds: w, check: c, particles: p, seed: 1000 + k });
-  const m = ms.find((x) => x.turn === Number(turn) && x.kind === 'throw')!;
-  console.log(`seed ${k}: best ${m.best.text} -- ${m.verdict} ${m.cost.toFixed(2)} +/- ${m.se.toFixed(2)}`);
+  const ms = analyzeAll({ ...r, match }, { rollout: saved('release'), worlds, check, particles, seed: 1000 + k });
+  const m = ms.find((x) => x.turn === Number(turn) && x.kind === kind)!;
+  // A run that agreed with the move costs nothing.
+  const cost = m.yours.code === m.best.code ? 0 : m.cost;
+  costs.push(cost);
+  console.log(`seed ${k}: best ${m.best.text} -- ${m.verdict} ${cost.toFixed(2)} +/- ${m.se.toFixed(2)}`);
 }
+const mean = costs.reduce((s, x) => s + x, 0) / costs.length;
+const sd = Math.sqrt(costs.reduce((s, x) => s + (x - mean) ** 2, 0) / Math.max(1, costs.length - 1));
+console.log(`mean cost ${mean.toFixed(2)}, spread between runs ${sd.toFixed(2)}`);
 console.log(`${((Date.now() - t0) / runs / 1000).toFixed(1)}s per review of the hand`);

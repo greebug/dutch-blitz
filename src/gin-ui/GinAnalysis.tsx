@@ -254,6 +254,14 @@ function Detail({ m }: { m: Moment }) {
         </ul>
       )}
 
+      {m.match && (FLAGGED.includes(m.verdict) || m.verdict === 'close') && (
+        <p className="gin-review__odds">
+          Judged on the match, at {m.match.you}–{m.match.them} to {m.match.target}: your move left you a{' '}
+          <strong>{pct(m.match.yours)}</strong> chance of winning it; the best move{' '}
+          <strong>{pct(m.match.best)}</strong>.
+        </p>
+      )}
+
       {m.odds && FLAGGED.includes(m.verdict) && (
         <p className="gin-review__odds">
           Over {m.worlds} play-outs from here, your move averaged <strong>{signed(m.odds.yours.mean)}</strong> points
