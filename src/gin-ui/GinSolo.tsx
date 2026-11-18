@@ -3,7 +3,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Player } from '../gin/arena';
 import type { Card } from '../gin/cards';
 import { type GinAction, type GinState, type Seat, apply, canApply, deal, legalActions, viewFor } from '../gin/game';
-import { LEVELS, type Level, makeOpponent } from '../gin/opponents';
+import { LEVELS, type Level, OPPONENTS_VERSION, makeOpponent } from '../gin/opponents';
+import type { HandForAnalysis } from '../gin/lab/analysis';
+import GinAnalysis from './GinAnalysis';
 import GinBoard from './GinBoard';
 import GinShowdown from './GinShowdown';
 import { BURST_MS } from './GinBurst';
@@ -147,6 +149,7 @@ export default function GinSolo() {
       matchId: match.id,
       hand: match.hands,
       level: hand.level,
+      bots: OPPONENTS_VERSION,
       humanSeat: you,
       target: TARGET,
       before: hand.before,
@@ -210,9 +213,16 @@ export default function GinSolo() {
     newMatch(lvl);
   };
 
+  // The hand under review, if any. Built once per click so the worker is not
+  // restarted by re-renders.
+  const [review, setReview] = useState<HandForAnalysis | null>(null);
+  useEffect(() => setReview(null), [hand]);
+
   const label = LEVELS.find((l) => l.level === level)!.label;
   const opponentName = level === 'hard' ? 'Champion' : `${label} bot`;
   const tally = `You ${match.you} · ${opponentName} ${match.bot}`;
+  /** The result has the screen: the board steps aside for it. */
+  const showing = over && !!view.score && (!pushed || !!matchOver) && !inFlight;
 
   return (
     <>
@@ -245,21 +255,29 @@ export default function GinSolo() {
         onKnock={(card: Card) => act({ type: 'knock', discard: card })}
         onBigGin={() => act({ type: 'big-gin' })}
         onBusyChange={setInFlight}
+        away={showing}
       />
 
-      {over && view.score && (!pushed || matchOver) && !inFlight && (
+      {/* Kept mounted under the review, so going back to it does not replay
+          the layoffs from the start. */}
+      {showing && (
+        <div className="gin-stage" hidden={!!review}>
         <GinShowdown
           view={view}
           opponentLabel={`The ${opponentName.toLowerCase()}`}
           onNext={matchOver ? () => newMatch() : nextHand}
           nextLabel={matchOver ? 'New match' : undefined}
+          onAnalyze={() => setReview({ seed: state.seed, humanSeat: you, history: state.history.slice() })}
           note={
             matchOver
               ? `${matchOver === 'you' ? 'You win the match' : `${opponentName} wins the match`}, ${tally}`
               : `Hand ${match.hands} · ${tally}`
           }
         />
+        </div>
       )}
+
+      {review && <GinAnalysis hand={review} opponentLabel={opponentName} onClose={() => setReview(null)} />}
     </>
   );
 }

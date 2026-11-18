@@ -37,6 +37,38 @@ const RECONNECT_GRACE_MS = 60_000;
 /** An untouched table is swept after this. */
 const IDLE_TABLE_MS = 2 * 60 * 60 * 1000;
 
+/** A match is first to this many unless the host picks otherwise. */
+export const DEFAULT_TARGET = 100;
+const NAME_MAX = 16;
+
+/**
+ * A guest's typed name, made safe to show the other player.
+ *
+ * Control characters out, whitespace collapsed, clipped to the same length the
+ * Blitz lobby allows. A name is a label and never an authorisation, so this is
+ * about what renders, not about who someone is.
+ */
+export function cleanName(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const name = raw
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, NAME_MAX)
+    .trim();
+  return name || null;
+}
+
+/**
+ * A target score from the wire. Null is "infinity": a match that runs until
+ * somebody leaves. Undefined is junk.
+ */
+export function cleanTarget(raw: unknown): number | null | undefined {
+  if (raw === null) return null;
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 10 || raw > 10_000) return undefined;
+  return raw;
+}
+
 export interface GinSeatInfo {
   seat: Seat;
   name: string;
@@ -55,8 +87,24 @@ interface GinTable {
   players: GinPlayer[];
   /** Null between hands and before the first deal. */
   state: GinState | null;
+  /** Indexed by TABLE seat -- who a player is -- not by where the engine put them. */
   running: [number, number];
   handsPlayed: number;
+  /** First to this many wins the match; null plays on forever. */
+  target: number | null;
+  /** The table seat that reached the target, until the next deal starts a new match. */
+  matchWinner: Seat | null;
+  /** Every deal made at this table, pushes included. Its parity is who opens. */
+  deals: number;
+  /**
+   * Whether table seat 0 sits in engine seat 1 this hand.
+   *
+   * The engine always lets seat 0 move first, so alternating the opener means
+   * alternating which engine seat each player occupies -- exactly what solo
+   * play does. A player's table seat (who they are, whose score is whose)
+   * never moves; only this mapping does.
+   */
+  flipped: boolean;
   touchedAt: number;
 }
 
@@ -88,6 +136,31 @@ export function attachGin(io: Server, deps: GinDeps): Namespace {
     return tables.has(code) ? generateCode() : code;
   }
 
+  /** Table seat to engine seat, and back: the mapping is its own inverse. */
+  function engineSeat(table: GinTable, seat: Seat): Seat {
+    return table.flipped ? other(seat) : seat;
+  }
+
+  /** The host is whoever opened the table, or whoever is left if they went. */
+  function hostSeat(table: GinTable): Seat | null {
+    const seats = table.players.map((p) => p.seat);
+    return seats.length ? (Math.min(...seats) as Seat) : null;
+  }
+
+  /**
+   * Two guests who both leave the name box alone would both be "Guest", and a
+   * scoreboard reading "Guest 12 · Guest 30" is exactly the confusion names
+   * are here to end. The second to sit down gets a number.
+   */
+  function distinctName(table: GinTable, name: string, self?: GinPlayer): string {
+    const taken = new Set(table.players.filter((p) => p !== self).map((p) => p.name.toLowerCase()));
+    if (!taken.has(name.toLowerCase())) return name;
+    for (let i = 2; ; i++) {
+      const candidate = `${name.slice(0, NAME_MAX - 2)} ${i}`;
+      if (!taken.has(candidate.toLowerCase())) return candidate;
+    }
+  }
+
   function seatInfo(table: GinTable): GinSeatInfo[] {
     return table.players
       .slice()
@@ -106,6 +179,9 @@ export function attachGin(io: Server, deps: GinDeps): Namespace {
         youAre: p.seat,
         running: table.running,
         handsPlayed: table.handsPlayed,
+        target: table.target,
+        matchWinner: table.matchWinner,
+        host: hostSeat(table) === p.seat,
         inHand: table.state !== null && table.state.phase !== 'over',
         canDeal: table.players.length === 2 && (table.state === null || table.state.phase === 'over'),
       });
@@ -123,8 +199,25 @@ export function attachGin(io: Server, deps: GinDeps): Namespace {
     if (!table.state) return;
     for (const p of table.players) {
       if (!p.socketId) continue;
-      nsp.to(p.socketId).emit('gin_view', { view: viewFor(table.state, p.seat) });
+      nsp.to(p.socketId).emit('gin_view', viewPayload(table, p));
     }
+  }
+
+  /**
+   * A seat's view, plus -- once the hand is over and not a moment before -- the
+   * deal's seed and the move list, which is what the hand review replays.
+   *
+   * The seed IS the deck order, so while a hand is live it would hand the
+   * browser every card in the stock and the opponent's whole hand. Once the
+   * hand is over both hands are face up anyway, the next deal comes from a
+   * fresh seed, and the order the stock would have run in is history.
+   */
+  function viewPayload(table: GinTable, p: GinPlayer) {
+    const state = table.state!;
+    const seat = engineSeat(table, p.seat);
+    const view = viewFor(state, seat);
+    if (state.phase !== 'over') return { view };
+    return { view, replay: { seed: state.seed, humanSeat: seat, history: state.history } };
   }
 
   function fail(socket: Socket, message: string) {
@@ -155,7 +248,9 @@ export function attachGin(io: Server, deps: GinDeps): Namespace {
     if (!score || score.winner === null) return;
     const knocker = state.knocker ?? 0;
     const winner: Seat = score.winner === 'knocker' ? (knocker as Seat) : other(knocker as Seat);
-    table.running[winner] += score.points;
+    const seat = engineSeat(table, winner);
+    table.running[seat] += score.points;
+    if (table.target !== null && table.running[seat] >= table.target) table.matchWinner = seat;
   }
 
   // --- action parsing -------------------------------------------------------
@@ -220,20 +315,28 @@ export function attachGin(io: Server, deps: GinDeps): Namespace {
     // Resolved once per connection: `handshake.headers` is frozen at connect
     // time, so a cookie set later is invisible until the client reconnects.
     // Guests are fine; the name is a label, never an authorisation.
-    let name = 'Guest';
+    //
+    // A signed-in player is their account name, whatever they type. A guest is
+    // what they typed, or "Guest".
+    let account: string | null = null;
     const named = deps
       .resolveName(socket.handshake.headers.cookie)
       .then((resolved) => {
-        if (resolved) name = resolved;
+        account = resolved;
       })
       .catch(() => {
         /* a failed lookup is a guest, not a locked door */
-      });
+      })
+      .finally(() => socket.emit('gin_identity', { account }));
 
-    socket.on('create_table', async () => {
+    const nameFrom = (typed: unknown) => account ?? cleanName(typed) ?? 'Guest';
+
+    socket.on('create_table', async (opts?: { name?: unknown; target?: unknown }) => {
       await named;
       if (socketToTable.has(socket.id)) return fail(socket, 'You are already at a table.');
       const code = generateCode();
+      const name = nameFrom(opts?.name);
+      const target = cleanTarget(opts?.target);
       const player: GinPlayer = { playerId: randomUUID(), socketId: socket.id, seat: 0, name };
       const table: GinTable = {
         code,
@@ -241,6 +344,10 @@ export function attachGin(io: Server, deps: GinDeps): Namespace {
         state: null,
         running: [0, 0],
         handsPlayed: 0,
+        target: target === undefined ? DEFAULT_TARGET : target,
+        matchWinner: null,
+        deals: 0,
+        flipped: false,
         touchedAt: Date.now(),
       };
       tables.set(code, table);
@@ -250,7 +357,7 @@ export function attachGin(io: Server, deps: GinDeps): Namespace {
       console.log(`[gin] ${name} opened table ${code}`);
     });
 
-    socket.on('join_table', async ({ code }: { code?: unknown }) => {
+    socket.on('join_table', async ({ code, name: typed }: { code?: unknown; name?: unknown } = {}) => {
       await named;
       if (typeof code !== 'string') return fail(socket, 'Enter a table code.');
       if (socketToTable.has(socket.id)) return fail(socket, 'You are already at a table.');
@@ -260,6 +367,7 @@ export function attachGin(io: Server, deps: GinDeps): Namespace {
 
       const taken = new Set(table.players.map((p) => p.seat));
       const seat: Seat = taken.has(0) ? 1 : 0;
+      const name = distinctName(table, nameFrom(typed));
       const player: GinPlayer = { playerId: randomUUID(), socketId: socket.id, seat, name };
       table.players.push(player);
       socketToTable.set(socket.id, table.code);
@@ -288,15 +396,16 @@ export function attachGin(io: Server, deps: GinDeps): Namespace {
       }
       if (player.socketId) socketToTable.delete(player.socketId);
       player.socketId = socket.id;
-      player.name = name;
+      // Signing in mid-table reconnects the socket, and that is when a guest
+      // label gives way to the account. A guest coming back keeps the name
+      // they chose rather than reverting to "Guest".
+      if (account) player.name = distinctName(table, account, player);
       socketToTable.set(socket.id, table.code);
 
       socket.emit('table_joined', { code: table.code, playerId, seat: player.seat });
       broadcastTable(table);
-      if (table.state) {
-        socket.emit('gin_view', { view: viewFor(table.state, player.seat) });
-      }
-      console.log(`[gin] ${name} reclaimed seat ${player.seat} at ${table.code}`);
+      if (table.state) socket.emit('gin_view', viewPayload(table, player));
+      console.log(`[gin] ${player.name} reclaimed seat ${player.seat} at ${table.code}`);
     });
 
     socket.on('deal_hand', () => {
@@ -304,6 +413,16 @@ export function attachGin(io: Server, deps: GinDeps): Namespace {
       if (!table) return fail(socket, 'You are not at a table.');
       if (table.players.length < 2) return fail(socket, 'Waiting for a second player.');
       if (table.state && table.state.phase !== 'over') return fail(socket, 'That hand is still going.');
+      // The match was decided last hand, so this deal is the first of a new one.
+      if (table.matchWinner !== null) {
+        table.running = [0, 0];
+        table.handsPlayed = 0;
+        table.matchWinner = null;
+      }
+      // The opener alternates every deal, pushes included -- the same rule as
+      // solo, and the one the rules page states.
+      table.flipped = table.deals % 2 === 1;
+      table.deals += 1;
       // A fresh seed per hand, from the server. A client-supplied seed would
       // let someone deal themselves a hand they had already looked at.
       table.state = deal(Math.floor(Math.random() * 2 ** 30), NAPOLETANE_GIN);
@@ -321,14 +440,34 @@ export function attachGin(io: Server, deps: GinDeps): Namespace {
       const action = parseAction(raw);
       if (!action) return fail(socket, 'That move made no sense.');
 
-      const why = canApply(table.state, player.seat, action);
+      const seat = engineSeat(table, player.seat);
+      const why = canApply(table.state, seat, action);
       if (why) return fail(socket, why);
 
       const before = table.state.phase;
-      table.state = apply(table.state, player.seat, action);
+      table.state = apply(table.state, seat, action);
       if (before !== 'over' && table.state.phase === 'over') recordHand(table, table.state);
 
       broadcastViews(table);
+      broadcastTable(table);
+    });
+
+    /**
+     * The host picks what the match is played to: before it starts, or once it
+     * is decided. Moving the line under a match in progress would let whoever
+     * is ahead end it on the spot.
+     */
+    socket.on('set_target', ({ target: raw }: { target?: unknown } = {}) => {
+      const table = tableFor(socket);
+      const player = table ? playerFor(table, socket) : null;
+      if (!table || !player) return fail(socket, 'You are not at a table.');
+      if (hostSeat(table) !== player.seat) return fail(socket, 'Only the host sets the target.');
+      const target = cleanTarget(raw);
+      if (target === undefined) return fail(socket, 'That is not a target score.');
+      const live = table.state !== null && table.state.phase !== 'over';
+      const started = table.handsPlayed > 0 && table.matchWinner === null;
+      if (live || started) return fail(socket, 'The target is set before a match starts.');
+      table.target = target;
       broadcastTable(table);
     });
 

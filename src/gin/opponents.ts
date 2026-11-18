@@ -13,8 +13,8 @@ import margins from './lab/champions/margins.json';
  *
  *  - **Hard** is the tournament champion: inference over the opponent's hand,
  *    then a search over sampled worlds, scored in match equity.
- *  - **Medium** is the tuned expert the champion searches with, playing
- *    without the search: strong, and about a point a hand weaker.
+ *  - **Medium** is the tuned expert the champion searches with (expert-v4),
+ *    playing without the search: strong, and about a point a hand weaker.
  *  - **Easy** is the human model -- takes anything that completes a meld,
  *    knocks the moment it can, shies away from feeding your pickups, and
  *    slips one decision in seven.
@@ -39,7 +39,23 @@ const equity = buildEquity(new Map(Object.entries(margins as Record<string, numb
  * hand at 60, +1.4 at 200 in the lab); 150 keeps a decision well under a
  * tenth of a second in a browser.
  */
+/**
+ * Stamped on every logged hand, so games against different builds of the
+ * computer can be told apart. Bump it whenever a level changes.
+ *   v3      expert-v3; Hard at 600 particles (first release)
+ *   v4-p4k  expert-v4 (blind-draw upcard rule); Hard at 4,000 particles
+ */
+export const OPPONENTS_VERSION = 'v4-p4k';
+
 export const HARD_WORLDS = 150;
+
+/**
+ * Guesses at the opponent's hand. 4,000 beat 600 by +0.50 +/- 0.13 points a
+ * hand over 10,000 hands, at no measurable cost in decision time (~25ms
+ * either way): the filter is cheap next to the rollouts, and a thin cloud of
+ * guesses is a noisy read of the person's hand.
+ */
+export const HARD_PARTICLES = 4000;
 
 export function makeOpponent(level: Level, seed: number, match: () => MatchContext): Player {
   switch (level) {
@@ -52,7 +68,7 @@ export function makeOpponent(level: Level, seed: number, match: () => MatchConte
         champion({
           worlds: HARD_WORLDS,
           width: 4,
-          particles: 600,
+          particles: HARD_PARTICLES,
           rollout: params,
           equity,
           confidence: 1.5,

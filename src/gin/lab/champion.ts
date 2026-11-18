@@ -18,6 +18,7 @@ import {
 import {
   type Inference,
   createInference,
+  holdsChanceOf,
   sampleTheirs,
   theyDraw,
   theyThrow,
@@ -88,7 +89,45 @@ export interface ChampionOptions {
   actual?: { draw: () => boolean | null; throw: () => number | null };
   /** For review tools: one more throw to evaluate alongside the shortlist. */
   consider?: () => number | null;
-  explain?: (info: { kind: 'draw' | 'throw'; moves: number[]; values: number[]; chosen: number }) => void;
+  /**
+   * Review mode: when the move actually played differs from the search's
+   * choice, replay just those two on this many FRESH worlds. Picking the best
+   * of several noisy candidates flatters the winner; a second, independent
+   * sample of the two moves is what an honest "this cost you N points" needs.
+   */
+  check?: number;
+  explain?: (info: Explanation) => void;
+  /**
+   * Diagnostics: who plays the rollouts out, ours first, instead of the
+   * expert in both chairs. Called per rollout. For testing a verdict against
+   * a stronger continuation; far too slow for play.
+   */
+  rollers?: () => [Policy, Policy];
+  /** Diagnostics: every finished rollout, with which candidate it was and in which phase. */
+  onRollout?: (phase: 'search' | 'check', candidate: number, table: Table) => void;
+}
+
+export interface Explanation {
+  kind: 'draw' | 'throw';
+  /** For a draw, 1 = take the upcard and 0 = draw blind; for a throw, move codes. */
+  moves: number[];
+  /** Each candidate's mean value relative to the first. */
+  values: number[];
+  chosen: number;
+  /** Per-candidate value in each sampled world (same worlds for every candidate). */
+  samples: number[][];
+  /**
+   * The independent replay of [chosen, actually played], when `check` asked
+   * for one. `takes`, for a throw: the share of worlds in which the opponent
+   * (as the rollouts model them) would pick the thrown card straight up.
+   */
+  check?: { moves: [number, number]; samples: [number[], number[]]; takes?: [number, number] };
+  /** Review mode: the chance, per card index, that the opponent holds it, from the inference. */
+  holds?: number[];
+}
+
+function holdsAll(live: Inference): number[] {
+  return Array.from({ length: 40 }, (_, c) => holdsChanceOf(live, c));
 }
 
 export function champion(options: ChampionOptions): Policy {
@@ -170,9 +209,10 @@ export function champion(options: ChampionOptions): Policy {
   }
 
   function rollout(t: Table): void {
-    me.begin!(t.seen[seat]);
-    them.begin!(t.seen[seat === 0 ? 1 : 0]);
-    if (!t.over) play(t, seat === 0 ? [me, them] : [them, me]);
+    const [a, b] = options.rollers?.() ?? [me, them];
+    a.begin!(t.seen[seat]);
+    b.begin!(t.seen[seat === 0 ? 1 : 0]);
+    if (!t.over) play(t, seat === 0 ? [a, b] : [b, a]);
   }
 
   /**
@@ -180,29 +220,53 @@ export function champion(options: ChampionOptions): Policy {
    * beat it, on the same worlds, by more than `confidence` standard errors
    * of the paired difference.
    */
-  function choose(seen: Seen, live: Inference, count: number, apply: (t: Table, k: number) => void): number {
-    const diff = new Float64Array(count);
-    const diff2 = new Float64Array(count);
-    const values = new Float64Array(count);
-    let n = 0;
+  /** Every candidate played out on the same `worlds` sampled worlds: samples[k][w]. */
+  function sample(
+    seen: Seen,
+    live: Inference,
+    count: number,
+    apply: (t: Table, k: number) => void,
+    worlds: number,
+    phase: 'search' | 'check' = 'search'
+  ): number[][] {
+    const out: number[][] = Array.from({ length: count }, () => []);
     const scores: [number, number] = [seen.pub.scores[0], seen.pub.scores[1]];
-    for (let w = 0, tries = 0; w < options.worlds && tries < options.worlds * 3; tries++) {
+    for (let w = 0, tries = 0; w < worlds && tries < worlds * 3; tries++) {
       const guess = world(seen, live);
       if (!guess) continue;
       w++;
-      n++;
       for (let k = 0; k < count; k++) {
         const t = tableFor(seen, guess.theirs, guess.stock);
         apply(t, k);
+        if (phase === 'check' && !t.over && t.pub.turn !== seat && t.pub.pile.length) {
+          // Would they take what we just threw? Asked of the rollout opponent
+          // before the rollout begins (begin() resets it again afterwards).
+          const theirs = t.seen[seat === 0 ? 1 : 0];
+          them.begin!(theirs);
+          if (them.draw(theirs)) lastTakes[k]++;
+        }
         rollout(t);
-        values[k] = value(t, scores);
+        out[k].push(value(t, scores));
+        options.onRollout?.(phase, k, t);
       }
+    }
+    return out;
+  }
+
+  function choose(seen: Seen, live: Inference, count: number, apply: (t: Table, k: number) => void): number {
+    const samples = sample(seen, live, count, apply, options.worlds);
+    lastSamples = samples;
+    const n = samples[0].length;
+    const diff = new Float64Array(count);
+    const diff2 = new Float64Array(count);
+    for (let w = 0; w < n; w++) {
       for (let k = 1; k < count; k++) {
-        const d = values[k] - values[0];
+        const d = samples[k][w] - samples[0][w];
         diff[k] += d;
         diff2[k] += d * d;
       }
     }
+    lastMeans = Array.from({ length: count }, (_, k) => (k === 0 || !n ? 0 : diff[k] / n));
     if (n < 2) return 0;
     const z = options.confidence ?? 1.5;
     let best = 0;
@@ -215,12 +279,36 @@ export function champion(options: ChampionOptions): Policy {
         bestMean = m;
       }
     }
-    lastMeans = Array.from({ length: count }, (_, k) => (k === 0 ? 0 : diff[k] / n));
     return best;
   }
 
   /** Each candidate's value relative to the expert's move, from the last search. */
   let lastMeans: number[] = [];
+  let lastSamples: number[][] = [];
+  let lastTakes: number[] = [0, 0];
+
+  /** Review mode: the independent replay of the chosen move against the one actually played. */
+  function checked(
+    seen: Seen,
+    live: Inference,
+    moves: number[],
+    chosen: number,
+    played: number | null | undefined,
+    apply: (t: Table, k: number) => void
+  ): Explanation['check'] {
+    if (!options.check || played === null || played === undefined) return undefined;
+    const k = moves.indexOf(played);
+    if (k < 0 || k === chosen) return undefined;
+    const pair = [chosen, k];
+    lastTakes = [0, 0];
+    const s = sample(seen, live, 2, (t, i) => apply(t, pair[i]), options.check, 'check');
+    const n = Math.max(1, s[0].length);
+    return {
+      moves: [moves[chosen], played],
+      samples: [s[0], s[1]],
+      takes: [lastTakes[0] / n, lastTakes[1] / n],
+    };
+  }
 
   return {
     name: options.name ?? 'champion',
@@ -235,18 +323,26 @@ export function champion(options: ChampionOptions): Policy {
       guide.begin!(seen);
       const usual = guide.draw(seen);
       const options2 = [usual, !usual];
-      const pick = choose(seen, live, 2, (t, k) => {
+      const apply = (t: Table, k: number) => {
         drawStep(t, options2[k]);
         // Finish our own turn the way the expert would, then hand over.
         const mine = t.seen[seat];
         me.begin!(mine);
         if (options2[k]) me.took(top);
         throwStep(t, me.throw(mine));
-      });
-      options.explain?.({ kind: 'draw', moves: options2.map(Number), values: lastMeans, chosen: pick });
+      };
+      const pick = choose(seen, live, 2, apply);
+      const actually = options.actual?.draw() ?? null;
+      if (options.explain) {
+        const moves = options2.map(Number);
+        const samples = lastSamples;
+        const values = lastMeans;
+        const check = checked(seen, live, moves, pick, actually === null ? null : Number(actually), apply);
+        options.explain({ kind: 'draw', moves, values, chosen: pick, samples, check, holds: holdsAll(live) });
+      }
       const take = options2[pick];
       // In review, the move that really happened is what goes in the notes.
-      const did = options.actual?.draw() ?? take;
+      const did = actually ?? take;
       if (did) tookTop = top;
       return take;
     },
@@ -260,11 +356,22 @@ export function champion(options: ChampionOptions): Policy {
       }
 
       let move: number;
-      if (deadwoodOf(seen.masks) === 0) move = BIG_GIN;
-      else {
-        const knock = bestThrow(seen.hand, seen.masks);
-        if (knock.left === 0) move = KNOCK + knock.card;
-        else {
+      const knock = bestThrow(seen.hand, seen.masks);
+      // Gin is never worth searching, except in review when somebody passed it up.
+      const forced = deadwoodOf(seen.masks) === 0 ? BIG_GIN : knock.left === 0 ? KNOCK + knock.card : null;
+      const played = forced !== null ? options.consider?.() : null;
+      if (forced !== null && (played === null || played === undefined || played === forced)) move = forced;
+      else if (forced !== null) {
+        const moves = [forced, played!];
+        const apply = (t: Table, k: number) => throwStep(t, moves[k]);
+        const pick = choose(seen, live, 2, apply);
+        const samples = lastSamples;
+        const values = lastMeans;
+        const check = checked(seen, live, moves, pick, played, apply);
+        options.explain?.({ kind: 'throw', moves, values, chosen: pick, samples, check, holds: holdsAll(live) });
+        move = forced;
+      } else {
+        {
           guide.begin!(seen);
           if (tookTop >= 0) guide.took(tookTop);
           // The expert's own move first, then its next best discards, then
@@ -278,8 +385,14 @@ export function champion(options: ChampionOptions): Policy {
           if (extra !== undefined && extra !== null && !moves.includes(extra)) moves.push(extra);
           if (moves.length === 1) move = moves[0];
           else {
-            const pick = choose(seen, live, moves.length, (t, k) => throwStep(t, moves[k]));
-            options.explain?.({ kind: 'throw', moves, values: lastMeans, chosen: pick });
+            const apply = (t: Table, k: number) => throwStep(t, moves[k]);
+            const pick = choose(seen, live, moves.length, apply);
+            if (options.explain) {
+              const samples = lastSamples;
+              const values = lastMeans;
+              const check = checked(seen, live, moves, pick, extra, apply);
+              options.explain({ kind: 'throw', moves, values, chosen: pick, samples, check, holds: holdsAll(live) });
+            }
             move = moves[pick];
           }
         }

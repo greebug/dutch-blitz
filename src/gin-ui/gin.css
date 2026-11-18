@@ -45,12 +45,16 @@ body {
 /* --- Header ---------------------------------------------------------------- */
 
 .gin-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas: "home title modes help";
+  align-items: center;
+  gap: 12px 14px;
 }
+.gin-home { grid-area: home; }
+.gin-top__title { grid-area: title; min-width: 0; }
+.gin-top .gin-modes { grid-area: modes; }
+.gin-top .gin-help { grid-area: help; }
 
 .gin-title {
   font-family: 'Alfa Slab One', Georgia, serif;
@@ -744,3 +748,339 @@ body {
 }
 
 .gin-tablescore__to { font-size: 12px; opacity: 0.75; }
+
+/* --- Hand review ------------------------------------------------------------
+
+   In the board's place, not over it: the hand is finished, so the table has
+   nothing left to say, and on a phone the review gets the whole screen rather
+   than a dialog to scroll inside. "‹ Result" goes back to the showdown.
+   Verdict colours run the usual way -- green good, through amber, to wine.
+
+   The modal shell below is the rules popup's, which genuinely is a popup. */
+.gin-modal {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 4vh 16px;
+  overflow-y: auto;
+}
+.gin-modal__scrim { position: fixed; inset: 0; background: rgba(8, 18, 13, 0.72); }
+.gin-modal__panel {
+  position: relative;
+  width: min(760px, 100%);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+}
+.gin-review__panel, .gin-modal__panel {
+  background: var(--felt-deep);
+  border: 1px solid rgba(201, 150, 42, 0.55);
+  border-radius: 14px;
+  padding: 14px 16px 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.gin-review { width: 100%; max-width: 760px; margin: 0 auto; }
+.gin-review__panel {
+  --card-w: clamp(34px, 5.3vw, 46px);
+  --v-best: #7ad6a0; --v-close: #8fc7c2; --v-inaccuracy: #f0c766;
+  --v-mistake: #f0964a; --v-blunder: #e0604f; --v-forced: rgba(243, 234, 214, 0.4);
+}
+.gin-review__head { display: flex; justify-content: space-between; align-items: center; }
+.gin-review__head h2 { font-family: 'Alfa Slab One', Georgia, serif; margin: 0; font-size: 19px; }
+.gin-review__close {
+  font: inherit; font-size: 24px; line-height: 1; width: 34px; height: 34px;
+  border-radius: 50%; border: 1px solid rgba(243, 234, 214, 0.2);
+  background: rgba(0, 0, 0, 0.25); color: var(--cream); cursor: pointer;
+}
+.gin-review__summary { margin: 0; color: var(--mute); font-size: 14px; line-height: 1.45; }
+.gin-review__summary strong { color: var(--cream); }
+.gin-review__bar { height: 4px; border-radius: 2px; background: rgba(243, 234, 214, 0.1); overflow: hidden; }
+.gin-review__bar span { display: block; height: 100%; background: var(--brass); transition: width 0.2s ease; }
+
+.gin-review__timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 5px; }
+.gin-review__dot {
+  font: inherit; font-size: 11px; font-weight: 700;
+  min-width: 30px; height: 26px; padding: 0 6px;
+  border-radius: 13px; cursor: pointer;
+  color: #10201a;
+  border: 2px solid transparent;
+  background: var(--v-forced);
+}
+.gin-review__dot[data-verdict='best'] { background: var(--v-best); }
+.gin-review__dot[data-verdict='close'] { background: var(--v-close); }
+.gin-review__dot[data-verdict='inaccuracy'] { background: var(--v-inaccuracy); }
+.gin-review__dot[data-verdict='mistake'] { background: var(--v-mistake); }
+.gin-review__dot[data-verdict='blunder'] { background: var(--v-blunder); color: var(--cream); }
+.gin-review__dot.is-on { border-color: var(--cream); transform: translateY(-2px); }
+.gin-review__dot:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+.gin-review__detail {
+  border: 1px solid rgba(243, 234, 214, 0.14);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.22);
+  padding: 10px 12px 12px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.gin-review__title {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
+  font-family: 'Alfa Slab One', Georgia, serif; font-size: 15px;
+}
+.gin-review__stock { font-family: Karla, system-ui, sans-serif; font-size: 12px; color: var(--faint); }
+.gin-review__badge {
+  font-family: Karla, system-ui, sans-serif; font-weight: 700; font-size: 12px;
+  padding: 3px 10px; border-radius: 999px; color: #10201a; background: var(--v-forced);
+}
+.gin-review__badge[data-verdict='best'] { background: var(--v-best); }
+.gin-review__badge[data-verdict='close'] { background: var(--v-close); }
+.gin-review__badge[data-verdict='inaccuracy'] { background: var(--v-inaccuracy); }
+.gin-review__badge[data-verdict='mistake'] { background: var(--v-mistake); }
+.gin-review__badge[data-verdict='blunder'] { background: var(--v-blunder); color: var(--cream); }
+
+.gin-review__table { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+.gin-review__upcard, .gin-review__hand { display: flex; flex-direction: column; gap: 5px; }
+.gin-review__hand { flex: 1 1 300px; min-width: 0; }
+.gin-review__tag { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); }
+.gin-review__cards { display: flex; flex-wrap: wrap; gap: 5px; }
+.gin-review__slot { border-radius: 8px; padding: 2px; border: 2px solid transparent; position: relative; }
+.gin-review__slot.is-yours { border-color: var(--v-blunder); }
+.gin-review__slot.is-best { border-color: var(--v-best); }
+.gin-review__slot.is-both { border-color: var(--v-best); }
+.gin-review__slot.is-yours.is-best { border-color: var(--v-best); }
+.gin-review__slot.is-yours::after, .gin-review__slot.is-best::after, .gin-review__slot.is-both::after {
+  position: absolute; left: 50%; bottom: -9px; transform: translateX(-50%);
+  font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 0 5px; border-radius: 6px; color: #10201a; white-space: nowrap;
+}
+.gin-review__slot.is-yours::after { content: 'you'; background: var(--v-blunder); color: var(--cream); }
+.gin-review__slot.is-best::after { content: 'best'; background: var(--v-best); }
+.gin-review__slot.is-both::after { content: 'you · best'; background: var(--v-best); }
+.gin-review__none { font-size: 12px; color: var(--faint); }
+
+.gin-review__moves { margin: 4px 0 0; display: grid; gap: 4px; }
+.gin-review__moves div { display: flex; gap: 10px; align-items: baseline; }
+.gin-review__moves dt {
+  width: 42px; flex: none; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint);
+}
+.gin-review__moves dd { margin: 0; font-weight: 700; }
+.gin-review__moves [data-who='best'] dd { color: var(--v-best); }
+.gin-review__why { margin: 0; padding-left: 18px; display: grid; gap: 5px; font-size: 14px; line-height: 1.45; }
+.gin-review__why-none, .gin-review__odds { margin: 0; font-size: 13px; color: var(--mute); line-height: 1.45; }
+.gin-review__fine { margin: 0; font-size: 11px; color: var(--faint); line-height: 1.4; }
+
+.gin-review__nav { display: flex; gap: 8px; flex-wrap: wrap; }
+.gin-review__nav .gin-btn { padding: 7px 14px; }
+.gin-review__nav .gin-btn:disabled { opacity: 0.4; cursor: default; transform: none; }
+
+@media (max-width: 560px) {
+  .gin-modal { padding: 0; }
+  .gin-modal__panel { border-radius: 0; min-height: 100dvh; }
+}
+
+/* --- How to play ------------------------------------------------------------ */
+.gin-top__right { display: flex; align-items: center; gap: 10px; }
+.gin-help {
+  font: inherit; font-family: 'Alfa Slab One', Georgia, serif; font-size: 17px; line-height: 1;
+  width: 36px; height: 36px; flex: none;
+  border-radius: 50%;
+  border: 1px solid rgba(201, 150, 42, 0.6);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--brass);
+  cursor: pointer;
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+.gin-help:hover { transform: translateY(-2px); filter: brightness(1.2); }
+.gin-help:focus-visible { outline: 2px solid var(--brass); outline-offset: 3px; }
+
+.gin-rules { --card-w: clamp(34px, 5.3vw, 44px); line-height: 1.5; font-size: 14px; }
+.gin-rules section { display: flex; flex-direction: column; gap: 6px; }
+.gin-rules h3 {
+  margin: 4px 0 0; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--brass);
+}
+.gin-rules p { margin: 0; color: var(--cream); }
+.gin-rules ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.gin-rules strong { color: #fff6df; }
+.gin-rules__cards { display: flex; gap: 5px; flex-wrap: wrap; }
+.gin-rules__examples { display: flex; gap: 18px; flex-wrap: wrap; }
+
+/* --- Board, and what stands in for it -------------------------------------- */
+
+.gin-board { display: flex; flex-direction: column; gap: 18px; }
+.gin-board.is-away { display: none; }
+.gin-field { display: flex; flex-direction: column; gap: 18px; }
+.gin-opponent__note::before { content: ' — '; }
+.gin-stage[hidden] { display: none; }
+.gin-stage { display: flex; flex-direction: column; gap: 12px; }
+
+.gin-review__head { gap: 10px; }
+.gin-review__back { padding: 6px 12px; font-size: 13px; }
+
+/* --- Lobby: who you are, and what the match is played to ------------------- */
+
+.gin-who {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(243, 234, 214, 0.14);
+  font-size: 14px; color: var(--mute);
+}
+.gin-who strong { color: var(--cream); }
+.gin-who--quiet { color: var(--faint); }
+.gin-who__name {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint);
+}
+.gin-who__aside { font-size: 12px; color: var(--faint); }
+.gin-who__lead { width: 100%; font-size: 12px; color: var(--faint); }
+.gin-who__err { width: 100%; font-size: 13px; color: #f0a497; }
+.gin-who--form .gin-field-input { flex: 1 1 140px; }
+
+.gin-field-input {
+  font: inherit; font-size: 15px; letter-spacing: normal; text-transform: none;
+  min-width: 0; width: 13em; max-width: 100%;
+  padding: 7px 10px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--cream);
+  border: 1px solid rgba(201, 150, 42, 0.45);
+  border-radius: 8px;
+}
+.gin-field-input:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+.gin-linkbtn {
+  font: inherit; font-size: inherit;
+  background: none; border: 0; padding: 0;
+  color: var(--brass); text-decoration: underline; text-underline-offset: 2px;
+  cursor: pointer;
+}
+.gin-linkbtn:disabled { opacity: 0.5; cursor: default; }
+
+.gin-btn:disabled { opacity: 0.45; cursor: default; transform: none; filter: none; }
+
+.gin-targets { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.gin-targets__label {
+  margin-right: 4px;
+  font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint);
+}
+.gin-target {
+  font: inherit; font-size: 13px; font-weight: 700;
+  min-width: 38px; height: 30px; padding: 0 8px;
+  border-radius: 15px;
+  border: 1px solid rgba(201, 150, 42, 0.45);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--cream);
+  cursor: pointer;
+}
+.gin-target.is-on { background: var(--brass); color: #2a1f06; border-color: #f0c766; }
+.gin-target:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.gin-note--inline { flex-direction: row; align-items: center; flex-wrap: wrap; }
+.gin-note--inline p { margin: 0; }
+.gin-tablescore__me { color: var(--cream); }
+
+/* --- Back to the hub --------------------------------------------------------
+   The domain's own rosette, so it reads as "the rest of the games", in this
+   table's brass rather than the hub's barn red. */
+.gin-home {
+  display: grid; place-items: center;
+  width: 36px; height: 36px; flex: none;
+  border-radius: 50%;
+  border: 1px solid rgba(201, 150, 42, 0.6);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--brass);
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+.gin-home svg { width: 24px; height: 24px; transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1); }
+.gin-home:hover { filter: brightness(1.2); transform: translateY(-2px); }
+.gin-home:hover svg { transform: rotate(45deg); }
+.gin-home:focus-visible { outline: 2px solid var(--brass); outline-offset: 3px; }
+
+/* --- A phone ----------------------------------------------------------------
+   Everything above the hand is squeezed so an eleven-card hand, the knock
+   button and the piles all fit one iPhone screen without scrolling: the title
+   row and the mode switch share a line, the opponent and both piles share a
+   band, and the scoreboard is a single strip. */
+@media (max-width: 520px) {
+  .gin { padding: 10px 10px 18px; gap: 10px; }
+  .gin-top {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "home title help" "modes modes modes";
+    gap: 8px;
+  }
+  .gin-top .gin-modes { justify-self: center; }
+  .gin-title { font-size: 19px; white-space: nowrap; }
+  .gin-sub { display: none; }
+  .gin-help, .gin-home { width: 32px; height: 32px; font-size: 15px; }
+  .gin-home svg { width: 21px; height: 21px; }
+  .gin-mode { padding: 6px 10px; font-size: 12px; }
+
+  .gin-tablebar { padding: 6px 10px; gap: 6px 10px; flex-wrap: nowrap; }
+  .gin-tablebar .gin-tablescore { margin-left: 0; width: auto; flex: 1 1 auto; min-width: 0; }
+  .gin-tablescore strong { font-size: 15px; }
+  .gin-level { flex-direction: row; align-items: center; gap: 6px; }
+  .gin-level { font-size: 0; letter-spacing: 0; }
+  .gin-level select { font-size: 12px; }
+  .gin-online .gin-tablebar { flex-wrap: wrap; }
+  .gin-online .gin-tablebar .gin-tablescore { order: 5; width: 100%; flex-basis: 100%; }
+
+  .gin-board, .gin-online { gap: 10px; }
+  .gin-field {
+    flex-direction: row; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 8px 2px;
+    border-top: 1px solid rgba(243, 234, 214, 0.1);
+    border-bottom: 1px solid rgba(243, 234, 214, 0.1);
+  }
+  .gin-opponent {
+    flex-direction: column; align-items: flex-start; gap: 5px;
+    --card-w: 46px;
+    min-width: 0; flex: 1 1 0;
+  }
+  .gin-opponent__label { font-size: 12px; line-height: 1.25; display: flex; flex-direction: column; }
+  .gin-opponent__note { color: var(--brass); min-height: 1.25em; }
+  .gin-opponent__note::before { content: none; }
+  .gin-table { padding: 0; border: 0; gap: 16px; flex: none; }
+  .gin-pile, .gin-pilebtn { gap: 3px; }
+  .gin-pile__note, .gin-pilebtn span { font-size: 10px; }
+  .gin-flightnote { margin: -4px 0 -4px; font-size: 11px; }
+
+  .gin-handwrap { gap: 4px; }
+  /* Six to a row, so eleven cards are two rows and never three. */
+  .gin-hand { --card-w: min(64px, calc((100vw - 62px) / 6)); column-gap: 8px; row-gap: 26px; padding-top: 8px; padding-bottom: 22px; }
+  .gin-actions { min-height: 38px; }
+  .gin-actions .gin-btn { padding: 8px 14px; }
+
+  /* The review, laid out to one screen. */
+  .gin-review__panel {
+    --card-w: 35px;
+    border-radius: 12px;
+    padding: 10px 10px 12px;
+    gap: 8px;
+  }
+  .gin-review__head h2 { font-size: 17px; }
+  .gin-review__summary { font-size: 13px; }
+  .gin-review__timeline { gap: 4px; }
+  .gin-review__dot { min-width: 26px; height: 22px; font-size: 10px; padding: 0 4px; }
+  .gin-review__detail { padding: 8px 9px 10px; gap: 7px; }
+  .gin-review__title { font-size: 13px; gap: 6px; }
+  .gin-review__table { gap: 8px; flex-wrap: nowrap; }
+  .gin-review__hand { flex: 1 1 auto; }
+  .gin-review__cards { gap: 3px; row-gap: 12px; }
+  .gin-review__slot { padding: 1px; }
+  .gin-review__why { font-size: 13px; gap: 4px; padding-left: 16px; }
+  .gin-review__why-none, .gin-review__odds { font-size: 12px; }
+  .gin-review__fine { display: none; }
+  .gin-review__nav .gin-btn { padding: 7px 11px; font-size: 13px; }
+
+  .gin-lobby__half { padding: 14px; }
+  .gin-who { padding: 10px 12px; }
+
+  /* The showdown in the board's place: smaller cards, and melds side by side
+     rather than one per line, so both hands and the buttons fit. */
+  .gin-result { padding: 9px 10px 10px; gap: 6px; }
+  .gin-result h2 { font-size: 16px; }
+  .gin-result__detail { font-size: 12px; }
+  .gin-showdown { --card-w: 33px; gap: 6px; }
+  .gin-side { padding: 6px 8px 7px; }
+  .gin-side__title { margin-bottom: 4px; font-size: 13px; }
+  .gin-meldrow { gap: 6px 10px; }
+  .gin-meldbox { gap: 2px; }
+  .gin-meldbox__cards { gap: 6px; }
+  .gin-legend { font-size: 11px; }
+  .gin-result__foot { gap: 8px 10px; }
+}

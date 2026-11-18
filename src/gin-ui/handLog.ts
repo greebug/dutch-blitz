@@ -19,6 +19,8 @@ export interface HandRecord {
   /** Hand number within the match, from 1. Pushes count. */
   hand: number;
   level: Level;
+  /** Which build of the computer played (see OPPONENTS_VERSION). Absent on records before it existed. */
+  bots?: string;
   humanSeat: Seat;
   seed: number;
   target: number;

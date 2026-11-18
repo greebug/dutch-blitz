@@ -40,6 +40,8 @@ export interface GinShowdownProps {
   note?: string;
   /** The button's words. "Next hand" unless the match is over. */
   nextLabel?: string;
+  /** Offer a review of the person's decisions this hand. */
+  onAnalyze?: () => void;
 }
 
 interface Placed {
@@ -55,6 +57,7 @@ export default function GinShowdown({
   nextDisabled,
   note,
   nextLabel,
+  onAnalyze,
 }: GinShowdownProps) {
   const score = view.score;
   const rootRef = useRef<HTMLDivElement>(null);
@@ -135,7 +138,7 @@ export default function GinShowdown({
           <HandSide title="You" hand={view.hand} />
           <HandSide title={opponentLabel} hand={theirHand} />
         </div>
-        <Footer onNext={onNext} nextDisabled={nextDisabled} note={note} label={nextLabel} />
+        <Footer onNext={onNext} nextDisabled={nextDisabled} note={note} label={nextLabel} onAnalyze={onAnalyze} />
       </div>
     );
   }
@@ -230,7 +233,7 @@ export default function GinShowdown({
         </p>
       )}
 
-      <Footer onNext={onNext} nextDisabled={nextDisabled} note={note} label={nextLabel} />
+      <Footer onNext={onNext} nextDisabled={nextDisabled} note={note} label={nextLabel} onAnalyze={onAnalyze} />
     </div>
   );
 }
@@ -240,17 +243,24 @@ function Footer({
   nextDisabled,
   note,
   label,
+  onAnalyze,
 }: {
   onNext: () => void;
   nextDisabled?: boolean;
   note?: string;
   label?: string;
+  onAnalyze?: () => void;
 }) {
   return (
     <div className="gin-result__foot">
       <button type="button" className="gin-btn gin-btn--go" onClick={onNext} disabled={nextDisabled}>
         {label ?? 'Next hand'}
       </button>
+      {onAnalyze && (
+        <button type="button" className="gin-btn gin-btn--quiet" onClick={onAnalyze}>
+          Analyze hand
+        </button>
+      )}
       {note && <p className="gin-result__note">{note}</p>}
     </div>
   );

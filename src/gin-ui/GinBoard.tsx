@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { type Card, cardId } from '../gin/cards';
 import { allMelds } from '../gin/melds';
@@ -55,9 +56,12 @@ export interface GinBoardProps {
    * its turn arrive as one.
    */
   onBusyChange?: (busy: boolean) => void;
+  /** Off screen while the showdown or the review stands in its place. */
+  away?: boolean;
 }
 
 export default function GinBoard({
+  away = false,
   view,
   onDrawStock,
   onTakeDiscard,
@@ -299,14 +303,20 @@ export default function GinBoard({
   const dropping = drag.state?.over === 'discard';
 
   return (
-    <>
+    // Hidden rather than unmounted while the showdown or the review has the
+    // screen: the board's memory of the last view is what tells the next deal
+    // apart from a draw, and a remount would forget it.
+    <div className={`gin-board${away ? ' is-away' : ''}`} aria-hidden={away || undefined}>
+      {/* The opponent and the two piles share one band. On a phone that is
+          what keeps the whole of an eleven-card hand on the screen. */}
+      <div className="gin-field">
       <section className="gin-opponent">
         <div ref={opponentRef}>
           <CardBack count={view.opponentCardCount} />
         </div>
         <span className="gin-opponent__label">
           {opponentLabel}
-          {opponentNote ? ` — ${opponentNote}` : ''}
+          {opponentNote ? <span className="gin-opponent__note">{opponentNote}</span> : null}
         </span>
       </section>
 
@@ -347,6 +357,7 @@ export default function GinBoard({
           <p className="gin-pile__note">{dropping ? 'Let go to throw' : 'Discard'}</p>
         </div>
       </section>
+      </div>
 
       {/* Said out loud as well as shown, because the flight is the only thing
           that distinguishes a stock draw from a discard draw and a player who
@@ -454,15 +465,14 @@ export default function GinBoard({
         </div>
       )}
 
-      {burst && (
-        <GinBurst
-          key={burst.id}
-          word={burst.word}
-          tone={burst.side}
-          onDone={() => setBurst(null)}
-        />
-      )}
-    </>
+      {/* Portalled out, because the board steps aside for the showdown the
+          moment the hand ends, and the word has to outlive it. */}
+      {burst &&
+        createPortal(
+          <GinBurst key={burst.id} word={burst.word} tone={burst.side} onDone={() => setBurst(null)} />,
+          document.body
+        )}
+    </div>
   );
 }
 

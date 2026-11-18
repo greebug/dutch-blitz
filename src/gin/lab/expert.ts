@@ -43,6 +43,15 @@ export interface ExpertParams {
   dSafe: number;
   /** Margin the upcard must clear before taking it (it tells them what we hold). */
   take: number;
+  /**
+   * What taking the upcard is measured against: 0 is keeping the hand exactly
+   * as it is, 1 is the expected hand after a blind draw (which also lets us
+   * shed our worst card). At 0 every low upcard looks like a bargain to a
+   * hand holding a high loose card -- take the 4, throw the King -- and a
+   * search using this player as its model of the opponent learns to bait it
+   * with low discards that a real opponent would never take.
+   */
+  blind: number;
   /** Knock threshold with a full stock... */
   knockEarly: number;
   /** ...and with an empty one. */
@@ -66,6 +75,7 @@ export const EXPERT_KEYS: (keyof ExpertParams)[] = [
   'dLive',
   'dSafe',
   'take',
+  'blind',
   'knockEarly',
   'knockLate',
   'knockThreat',
@@ -83,6 +93,7 @@ export const SEED_PARAMS: ExpertParams = {
   dLive: 0.5,
   dSafe: 1,
   take: 0.5,
+  blind: 0,
   knockEarly: 8,
   knockLate: 3,
   knockThreat: 0.8,
@@ -101,6 +112,7 @@ export const PARAM_BOUNDS: Record<keyof ExpertParams, [number, number]> = {
   dLive: [0, 3],
   dSafe: [0, 4],
   take: [-4, 6],
+  blind: [0, 1],
   knockEarly: [0, 10],
   knockLate: [-2, 9],
   knockThreat: [0, 4],
@@ -271,6 +283,44 @@ export function expert(params: ExpertParams, next: () => number = Math.random, n
     return out.sort((a, b) => a.score - b.score || POINTS[b.card] - POINTS[a.card]);
   }
 
+  /**
+   * The expected keep-score after drawing blind and throwing the best card,
+   * cheaply: a drawn card that melds (a live out) is assumed to meld and cost
+   * nothing; any other card either goes straight back (score unchanged) or
+   * replaces our worst card, whichever is better.
+   */
+  function blindValue(seen: Seen, now: number, frac: number): number {
+    // Best nine: the hand without its most expendable card.
+    work.set(seen.masks);
+    let base = Infinity;
+    for (const c of seen.hand) {
+      const s = (c / 10) | 0;
+      const bit = 1 << c % 10;
+      work[s] &= ~bit;
+      const v = keepScore(work, frac);
+      work[s] |= bit;
+      if (v < base) base = v;
+    }
+    const m = seen.masks;
+    let sum = 0;
+    let n = 0;
+    for (let x = 0; x < 40; x++) {
+      if (!live[x]) continue;
+      n++;
+      const s = (x / 10) | 0;
+      const r = x % 10;
+      const ms = m[s];
+      const sameRank = ((m[0] >> r) & 1) + ((m[1] >> r) & 1) + ((m[2] >> r) & 1) + ((m[3] >> r) & 1);
+      const up1 = (ms >> (r + 1)) & 1;
+      const up2 = (ms >> (r + 2)) & 1;
+      const dn1 = r >= 1 ? (ms >> (r - 1)) & 1 : 0;
+      const dn2 = r >= 2 ? (ms >> (r - 2)) & 1 : 0;
+      const melds = sameRank >= 2 || (up1 && up2) || (dn1 && up1) || (dn1 && dn2);
+      sum += melds ? Math.min(now, base) : Math.min(now, base + POINTS[x]);
+    }
+    return n ? sum / n : now;
+  }
+
   return {
     name,
     rank,
@@ -303,7 +353,9 @@ export function expert(params: ExpertParams, next: () => number = Math.random, n
         work[s] |= bit;
         if (v < best) best = v;
       }
-      const take = best + p.take < now;
+      const blind = p.blind ? blindValue(seen, now, frac) : now;
+      const base = now + (p.blind ?? 0) * (blind - now);
+      const take = best + p.take < base;
       if (take) justTook = top;
       return take;
     },

@@ -1,0 +1,27 @@
+gen 0: best 0.392 (worst vs incumbent 0.00), incumbent 0.392, 39.1s
+gen 1: best 0.400 (worst vs incumbent 0.00), incumbent 0.382, 37.9s
+gen 2: best 0.420 (worst vs incumbent 0.00), incumbent 0.418, 38.5s
+gen 3: best 0.422 (worst vs incumbent -0.01), incumbent 0.411, 36.2s
+gen 4: best 0.416 (worst vs incumbent 0.03), incumbent 0.410, 39.8s
+gen 5: best 0.425 (worst vs incumbent 0.02), incumbent 0.414, 39.3s
+gen 6: best 0.419 (worst vs incumbent 0.00), incumbent 0.419, 38.9s
+gen 7: best 0.433 (worst vs incumbent 0.02), incumbent 0.418, 39.4s
+gen 8: best 0.421 (worst vs incumbent 0.02), incumbent 0.409, 39.1s
+gen 9: best 0.421 (worst vs incumbent 0.00), incumbent 0.416, 35.0s
+gen 10: best 0.424 (worst vs incumbent -0.00), incumbent 0.417, 34.9s
+gen 11: best 0.405 (worst vs incumbent -0.01), incumbent 0.396, 34.2s
+gen 12: best 0.420 (worst vs incumbent -0.02), incumbent 0.417, 34.4s
+gen 13: best 0.423 (worst vs incumbent 0.02), incumbent 0.411, 35.0s
+gen 14: best 0.427 (worst vs incumbent 0.03), incumbent 0.415, 34.7s
+  vs heuristic-sharp    wins 75.0% +/- 0.4
+  vs heuristic-steady   wins 81.4% +/- 0.4
+  vs greedy             wins 65.5% +/- 0.4
+  vs hoarder-2          wins 73.5% +/- 0.4
+  vs gin-hunter         wins 70.8% +/- 0.5
+  vs magpie             wins 98.6% +/- 0.1
+  vs careless           wins 99.9% +/- 0.0
+  vs casual             wins 93.6% +/- 0.3
+  vs cautious           wins 80.8% +/- 0.4
+  vs expert-seed        wins 72.0% +/- 0.4
+  vs forgetful          wins 84.1% +/- 0.4
+  vs human              wins 81.1% +/- 0.4

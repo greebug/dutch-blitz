@@ -3,7 +3,9 @@ import { useState } from 'react';
 import { NAPOLETANE_GIN } from '../gin/rules';
 import DeckDefs from './deck/DeckDefs';
 import GinOnline from './GinOnline';
+import GinRules from './GinRules';
 import GinSolo from './GinSolo';
+import { HubMark } from './HubMark';
 
 type Mode = 'solo' | 'online';
 
@@ -16,6 +18,7 @@ type Mode = 'solo' | 'online';
  * with somebody sitting at it. Solo keeps no connection and nothing to clean up.
  */
 export default function GinApp() {
+  const [rulesOpen, setRulesOpen] = useState(false);
   const [mode, setMode] = useState<Mode>(() =>
     new URLSearchParams(location.search).has('online') ? 'online' : 'solo'
   );
@@ -34,10 +37,14 @@ export default function GinApp() {
       <DeckDefs />
 
       <header className="gin-top">
-        <div>
-          <h1 className="gin-title">Gin Rummy</h1>
+        {/* Back to bingbongblitz.com, where the other games are. */}
+        <a className="gin-home" href="/" aria-label="All games at bingbongblitz.com" title="All games">
+          <HubMark />
+        </a>
+        <div className="gin-top__title">
+          <h1 className="gin-title">Napoletane Gin Rummy</h1>
           <p className="gin-sub">
-            Napoletane deck · knock at {NAPOLETANE_GIN.knockMaxDeadwood}
+            Knock at {NAPOLETANE_GIN.knockMaxDeadwood} · first to 100
           </p>
         </div>
         <nav className="gin-modes" aria-label="Game mode">
@@ -56,7 +63,18 @@ export default function GinApp() {
             Two players
           </button>
         </nav>
+        <button
+          type="button"
+          className="gin-help"
+          onClick={() => setRulesOpen(true)}
+          aria-label="How to play"
+          title="How to play"
+        >
+          ?
+        </button>
       </header>
+
+      {rulesOpen && <GinRules onClose={() => setRulesOpen(false)} />}
 
       {mode === 'solo' ? <GinSolo /> : <GinOnline />}
     </div>

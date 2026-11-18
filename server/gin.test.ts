@@ -8,6 +8,7 @@ import { type Socket as ClientSocket, io as ioClient } from 'socket.io-client';
 
 import { attachGin } from './gin';
 import type { GinView } from '../src/gin/game';
+import { knockOptions } from '../src/gin/rules';
 
 /**
  * End-to-end over a real socket.io server on an ephemeral port.
@@ -236,6 +237,136 @@ describe('gin multiplayer', () => {
     a.disconnect();
     b.disconnect();
     intruder.disconnect();
+  });
+
+  it('names each player what they typed, the same on both screens', async () => {
+    const a = await connect();
+    const b = await connect();
+    const joined = next<{ code: string }>(a, 'table_joined');
+    a.emit('create_table', { name: '  Ada\u0007  Lovelace  ' });
+    const { code } = await joined;
+    const seenByA = next<{ seats: { seat: number; name: string }[] }>(a, 'table_update');
+    const seenByB = next<{ seats: { seat: number; name: string }[] }>(b, 'table_update');
+    b.emit('join_table', { code, name: 'Ada Lovelace' });
+    const [ta, tb] = [await seenByA, await seenByB];
+    assert.deepEqual(ta.seats, tb.seats, 'one table, one set of names');
+    assert.deepEqual(
+      ta.seats.map((s) => s.name),
+      ['Ada Lovelace', 'Ada Lovelace 2'],
+      'cleaned, and never two of the same'
+    );
+    a.disconnect();
+    b.disconnect();
+  });
+
+  it('alternates who opens, keeps each score with its player, and hands over the replay only at the end', async () => {
+    const { a, b } = await seatedPair();
+    const first = await deal(a, b);
+    assert.equal(first.a.yourTurn, true, 'the host opens the first hand');
+    assert.equal(first.b.yourTurn, false);
+
+    // Play the hand out on stock draws and first-card throws until it ends.
+    const finish = async () => {
+      let views = { a: first.a, b: first.b };
+      let replay: any = null;
+      for (let guard = 0; guard < 200; guard++) {
+        const mover = views.a.yourTurn ? a : views.b.yourTurn ? b : null;
+        if (!mover) break;
+        const view = mover === a ? views.a : views.b;
+        const va = next<{ view: GinView; replay?: unknown }>(a, 'gin_view');
+        const vb = next<{ view: GinView; replay?: unknown }>(b, 'gin_view');
+        if (view.phase === 'draw') mover.emit('act', { type: 'draw', from: 'stock' });
+        else mover.emit('act', { type: 'discard', card: `${view.hand[0].suit}${view.hand[0].rank}` });
+        const [pa, pb] = [await va, await vb];
+        views = { a: pa.view, b: pb.view };
+        if (pa.view.phase !== 'over') assert.equal(pa.replay, undefined, 'no seed while the hand is live');
+        else replay = { a: pa.replay, b: pb.replay };
+      }
+      return { views, replay };
+    };
+
+    const { views, replay } = await finish();
+    assert.equal(views.a.phase, 'over');
+    assert.equal(replay.a.seed, replay.b.seed);
+    assert.equal(replay.a.humanSeat, 0);
+    assert.equal(replay.b.humanSeat, 1);
+    assert.ok(replay.a.history.length > 0);
+
+    const second = await deal(a, b);
+    assert.equal(second.b.yourTurn, true, 'the guest opens the second hand');
+    assert.equal(second.a.yourTurn, false);
+    assert.equal(second.b.seat, 0, 'by sitting in the engine seat that moves first');
+
+    a.disconnect();
+    b.disconnect();
+  });
+
+  it('lets the host set the target, including no target at all', async () => {
+    const a = await connect();
+    const joined = next<{ code: string }>(a, 'table_joined');
+    const firstInfo = next<{ target: number | null; host: boolean }>(a, 'table_update');
+    a.emit('create_table', { target: 250 });
+    await joined;
+    const info = await firstInfo;
+    assert.equal(info.target, 250);
+    assert.equal(info.host, true);
+
+    const changed = next<{ target: number | null }>(a, 'table_update');
+    a.emit('set_target', { target: null });
+    assert.equal((await changed).target, null);
+
+    const bad = next<{ message: string }>(a, 'gin_error');
+    a.emit('set_target', { target: 'lots' });
+    assert.match((await bad).message, /not a target/i);
+    a.disconnect();
+  });
+
+  it('ends the match at the target, and the next deal starts a new one', async () => {
+    const a = await connect();
+    const b = await connect();
+    const joined = next<{ code: string }>(a, 'table_joined');
+    a.emit('create_table', { target: 10 });
+    const { code } = await joined;
+    const seated = next(b, 'table_joined');
+    b.emit('join_table', { code });
+    await seated;
+
+    type Info = { running: [number, number]; matchWinner: number | null; handsPlayed: number };
+    // A box, not a bare let: TypeScript cannot see the listener assign it.
+    const seen: { info: Info | null } = { info: null };
+    a.on('table_update', (i: Info) => (seen.info = i));
+
+    // Knock the moment it is legal, throw the costliest card otherwise.
+    for (let hand = 0; hand < 30 && seen.info?.matchWinner == null; hand++) {
+      let views = await deal(a, b);
+      for (let guard = 0; guard < 200 && views.a.phase !== 'over'; guard++) {
+        const mover = views.a.yourTurn ? a : b;
+        const view = mover === a ? views.a : views.b;
+        const va = next<{ view: GinView }>(a, 'gin_view');
+        const vb = next<{ view: GinView }>(b, 'gin_view');
+        if (view.phase === 'draw') mover.emit('act', { type: 'draw', from: 'stock' });
+        else {
+          const knock = knockOptions(view.hand).find((k) => k.legal);
+          const id = (c: { suit: string; rank: number }) => `${c.suit}${c.rank}`;
+          if (knock) mover.emit('act', { type: 'knock', discard: id(knock.discard) });
+          else mover.emit('act', { type: 'discard', card: id(view.deadwood[view.deadwood.length - 1] ?? view.hand[0]) });
+        }
+        views = { a: (await va).view, b: (await vb).view };
+      }
+      await new Promise((r) => setTimeout(r, 20));
+    }
+
+    const done = seen.info;
+    assert.ok(done && done.matchWinner !== null, 'somebody reached 10');
+    assert.ok(done!.running[done!.matchWinner!] >= 10);
+
+    const fresh = next<Info>(a, 'table_update');
+    a.emit('deal_hand');
+    const restarted = await fresh;
+    assert.deepEqual(restarted.running, [0, 0], 'a new match starts from nothing');
+    assert.equal(restarted.matchWinner, null);
+    a.disconnect();
+    b.disconnect();
   });
 
   it('abandons the hand when a player leaves for good', async () => {

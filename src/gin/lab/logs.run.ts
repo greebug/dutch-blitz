@@ -1,16 +1,14 @@
 import { existsSync, readFileSync } from 'node:fs';
 
-import { cardId, cardIndex, describe as describeCard } from '../cards';
-import { type GinAction, type GinState, type Seat, apply, deal, viewFor } from '../game';
-import { seated } from './adapter';
-import { champion } from './champion';
-import { BIG_GIN, KNOCK } from './fast';
+import { cardId, describe as describeCard } from '../cards';
+import { type GinAction, type GinState, type Seat, apply, deal } from '../game';
+import { type Moment, type Verdict, analyzeAll } from './analysis';
 import { flag, positional, saved } from './registry';
 
 /**
  * What the logs of real games say.
  *
- *   npx tsx src/gin/lab/logs.run.ts [file] [--review] [--worlds n] [--level hard]
+ *   npx tsx src/gin/lab/logs.run.ts [file] [--review] [--all] [--worlds n] [--check n] [--level hard]
  *
  * Every hand is first replayed through the referee from its seed and moves; a
  * record that does not reproduce its own result is reported and skipped, so
@@ -38,10 +36,12 @@ interface Record {
 }
 
 const args = process.argv.slice(2);
-const plain = positional(args, ['--review']);
+const plain = positional(args, ['--review', '--all']);
 const file = plain[0] ?? 'logs/gin-hands.jsonl';
 const reviewing = args.includes('--review');
-const worlds = flag(args, '--worlds', 200);
+const verbose = args.includes('--all');
+const worlds = flag(args, '--worlds', 600);
+const check = flag(args, '--check', 1500);
 const levelAt = args.indexOf('--level');
 const onlyLevel = levelAt >= 0 ? args[levelAt + 1] : null;
 
@@ -59,96 +59,6 @@ function replay(r: Record): GinState | string {
   const m = !s || s.winner === null ? 0 : (s.winner === 'knocker' ? knocker : knocker === 0 ? 1 : 0) === r.humanSeat ? s.points : -s.points;
   if (m !== r.margin) return `replayed margin ${m}, logged ${r.margin}`;
   return state;
-}
-
-function code(action: GinAction): number | null {
-  if (action.type === 'discard') return cardIndex(action.card);
-  if (action.type === 'knock') return KNOCK + cardIndex(action.discard);
-  if (action.type === 'big-gin') return BIG_GIN;
-  return null;
-}
-
-function say(moveCode: number): string {
-  if (moveCode === BIG_GIN) return 'big gin';
-  const knock = moveCode >= KNOCK;
-  const c = knock ? moveCode - KNOCK : moveCode;
-  const id = cardId({ suit: (['ro', 'su', 'sw', 'go'] as const)[(c / 10) | 0], rank: ((c % 10) + 1) as 1 });
-  return knock ? `knock, throwing ${id}` : `throw ${id}`;
-}
-
-interface Verdict {
-  record: Record;
-  at: number;
-  hand: string;
-  upcard: string;
-  mine: string;
-  best: string;
-  cost: number;
-}
-
-function review(r: Record, state0: GinState): { decisions: number; agreed: number; cost: number; verdicts: Verdict[] } {
-  let current: GinAction = r.history[0];
-  let last: { moves: number[]; values: number[]; chosen: number; kind: string } | null = null;
-  const policy = champion({
-    worlds,
-    width: 5,
-    particles: 800,
-    rollout: saved('release'),
-    equity: null,
-    confidence: 0,
-    seed: r.seed,
-    actual: {
-      draw: () => (current.type === 'draw' ? current.from === 'discard' : null),
-      throw: () => code(current),
-    },
-    consider: () => code(current),
-    explain: (info) => {
-      last = info;
-    },
-  });
-  const player = seated(policy);
-  let state = deal(r.seed);
-  const seat = r.humanSeat;
-  player.begin!(seat, state.hands[seat], state.discard[state.discard.length - 1], state.stock.length);
-  let decisions = 0;
-  let agreed = 0;
-  let cost = 0;
-  const verdicts: Verdict[] = [];
-  for (let i = 0; i < r.history.length; i++) {
-    const action = r.history[i];
-    if (state.turn === seat) {
-      current = action;
-      last = null;
-      const view = viewFor(state, seat);
-      const theirs = player.act(view, r.history.slice(0, i));
-      decisions++;
-      const mineCode = action.type === 'draw' ? (action.from === 'discard' ? 1 : 0) : code(action)!;
-      const champCode = theirs.type === 'draw' ? (theirs.from === 'discard' ? 1 : 0) : code(theirs)!;
-      if (mineCode === champCode) agreed++;
-      const l = last as { moves: number[]; values: number[]; kind: string } | null;
-      if (l && mineCode !== champCode) {
-        const k = l.moves.indexOf(mineCode);
-        if (k >= 0) {
-          const top = Math.max(...l.values);
-          const c = top - l.values[k];
-          cost += c;
-          const best = l.moves[l.values.indexOf(top)];
-          verdicts.push({
-            record: r,
-            at: i,
-            hand: view.hand.map(cardId).join(' '),
-            upcard: view.discardTop ? describeCard(view.discardTop) : '-',
-            mine: l.kind === 'draw' ? (mineCode ? 'take the upcard' : 'draw blind') : say(mineCode),
-            best: l.kind === 'draw' ? (best ? 'take the upcard' : 'draw blind') : say(best),
-            cost: c,
-          });
-        }
-      }
-    }
-    state = apply(state, state.turn, action);
-  }
-  void state0;
-  return { decisions, agreed, cost, verdicts };
 }
 
 function main(): void {
@@ -220,24 +130,28 @@ function main(): void {
   }
 
   if (!reviewing) return;
-  console.log(`\nreview by the champion (${worlds} worlds per decision)...`);
-  let decisions = 0;
-  let agreed = 0;
+  console.log(`\nreview by the champion (${worlds} worlds per decision, ${check} to price a disagreement)...`);
+  const counts = new Map<Verdict, number>();
   let cost = 0;
-  const all: Verdict[] = [];
+  const all: { r: Record; m: Moment }[] = [];
+  const started = Date.now();
   for (const g of good) {
-    const v = review(g.r, g.s);
-    decisions += v.decisions;
-    agreed += v.agreed;
-    cost += v.cost;
-    all.push(...v.verdicts);
+    for (const m of analyzeAll(g.r, { rollout: saved('release'), worlds, check })) {
+      counts.set(m.verdict, (counts.get(m.verdict) ?? 0) + 1);
+      if (m.verdict !== 'best' && m.verdict !== 'close' && m.verdict !== 'forced') cost += m.cost;
+      all.push({ r: g.r, m });
+    }
   }
-  console.log(`  agreed with the champion on ${agreed} of ${decisions} decisions (${((100 * agreed) / Math.max(1, decisions)).toFixed(0)}%)`);
-  console.log(`  estimated cost of the disagreements: ${(cost / Math.max(1, good.length)).toFixed(2)} points per hand`);
+  const decisions = all.length;
+  console.log(`  ${decisions} decisions in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+  console.log(`  ${(['best', 'close', 'inaccuracy', 'mistake', 'blunder', 'forced'] as Verdict[]).map((v) => `${v} ${counts.get(v) ?? 0}`).join(', ')}`);
+  console.log(`  estimated cost of the errors: ${(cost / Math.max(1, good.length)).toFixed(2)} points per hand`);
   console.log(`\n  the costliest calls:`);
-  for (const v of all.sort((a, b) => b.cost - a.cost).slice(0, 12)) {
-    console.log(`  - match ${v.record.matchId} hand ${v.record.hand}, move ${v.at}: holding ${v.hand}, upcard ${v.upcard}`);
-    console.log(`      you: ${v.mine}; champion: ${v.best} (about ${v.cost.toFixed(1)} points)`);
+  const worst = all.filter((x) => x.m.verdict !== 'close' && x.m.verdict !== 'best').sort((a, b) => b.m.cost - a.m.cost);
+  for (const { r, m } of worst.slice(0, verbose ? 1000 : 12)) {
+    console.log(`  - ${r.matchId} hand ${r.hand}, turn ${m.turn} ${m.kind}: holding ${m.hand.map(cardId).join(' ')}, upcard ${m.upcard ? describeCard(m.upcard) : '-'}`);
+    console.log(`      you: ${m.yours.text}; best: ${m.best.text} -- ${m.verdict}, ${m.cost.toFixed(1)} +/- ${m.se.toFixed(1)} points`);
+    for (const w of m.why) console.log(`        * ${w}`);
   }
 }
 

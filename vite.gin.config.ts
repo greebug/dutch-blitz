@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 /**
- * Gin Rummy's own build.
+ * Napoletane Gin Rummy's own build.
  *
  * A second Vite config rather than a route inside the Blitz bundle, because the
  * two apps are served at different prefixes and `base` is per-build: Blitz is

@@ -11,6 +11,8 @@ import { PANEL, type Spec, specName } from './panel';
  *  - any saved expert in champions/ (`expert-v1`, `exploit-v1`, ...)
  *  - `champion...` for the search player, with suffixes:
  *      `-eq`       score rollouts in match equity rather than points
+ *      `@name`     roll out with that saved expert (`champion-eq@expert-v4`)
+ *      `:pN`       N particles in its inference (`champion-eq:p4000`)
  *      `-uniform`  ablation: ignore the inference, guess their hand uniformly
  */
 export const CHAMPIONS_DIR = 'src/gin/lab/champions';
@@ -48,9 +50,12 @@ export function resolve(name: string, settings: SearchSettings = DEFAULT_SEARCH)
     const options: ChampionOptions = {
       worlds: settings.worlds,
       width: settings.width,
-      particles: settings.particles,
+      // `champion-eq:p4000`: this player's own particle count.
+      particles: /:p(\d+)/.test(name) ? Number(/:p(\d+)/.exec(name)![1]) : settings.particles,
       confidence: settings.confidence,
-      rollout: saved(settings.rollout),
+      // `champion-eq@expert-v4`: this player's own rollout expert, so two
+      // champions differing only in their rollouts can meet in one duel.
+      rollout: saved(name.includes('@') ? name.split('@')[1].split(':')[0] : settings.rollout),
       equity: name.includes('-eq') ? loadEquity() : null,
       uniform: name.includes('-uniform'),
       name,

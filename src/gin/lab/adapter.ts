@@ -43,29 +43,7 @@ export function seated(policy: Policy, match?: () => MatchContext): Player {
   }
 
   function replay(history: readonly GinAction[]) {
-    for (; consumed < history.length; consumed++) {
-      const action = history[consumed];
-      // Two entries per turn, seat 0 first: the hand ends on a knock, so the
-      // pattern never breaks before the end.
-      const seat = (Math.floor(consumed / 2) % 2) as Seat;
-      const top = pub.pile.length ? pub.pile[pub.pile.length - 1] : -1;
-      if (action.type === 'draw') {
-        if (action.from === 'discard') {
-          pub.pile.pop();
-          pub.taken[seat][top] = 1;
-        } else {
-          if (top >= 0) pub.passed[seat][top] = 1;
-          pub.stockCount--;
-        }
-      } else if (action.type === 'discard' || action.type === 'knock') {
-        const c = cardIndex(action.type === 'discard' ? action.card : action.discard);
-        pub.pile.push(c);
-        pub.thrown[seat][c] = 1;
-        pub.taken[seat][c] = 0;
-        pub.turns++;
-        pub.turn = seat === 0 ? 1 : 0;
-      }
-    }
+    for (; consumed < history.length; consumed++) advancePublic(pub, history[consumed], consumed);
   }
 
   return {
@@ -94,6 +72,33 @@ export function seated(policy: Policy, match?: () => MatchContext): Player {
       return { type: 'discard', card: cardFromIndex(move) };
     },
   };
+}
+
+/**
+ * Fold the `index`-th entry of a hand's public action log into `pub`.
+ *
+ * Two entries per turn, seat 0 first: the hand ends on a knock, so the pattern
+ * never breaks before the end.
+ */
+export function advancePublic(pub: Public, action: GinAction, index: number): void {
+  const seat = (Math.floor(index / 2) % 2) as Seat;
+  const top = pub.pile.length ? pub.pile[pub.pile.length - 1] : -1;
+  if (action.type === 'draw') {
+    if (action.from === 'discard') {
+      pub.pile.pop();
+      pub.taken[seat][top] = 1;
+    } else {
+      if (top >= 0) pub.passed[seat][top] = 1;
+      pub.stockCount--;
+    }
+  } else if (action.type === 'discard' || action.type === 'knock') {
+    const c = cardIndex(action.type === 'discard' ? action.card : action.discard);
+    pub.pile.push(c);
+    pub.thrown[seat][c] = 1;
+    pub.taken[seat][c] = 0;
+    pub.turns++;
+    pub.turn = seat === 0 ? 1 : 0;
+  }
 }
 
 /** For the arena: a fresh seated policy per hand. */

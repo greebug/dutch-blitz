@@ -375,7 +375,7 @@ const io = new Server(httpServer, {
   cors: { origin: '*' },
 });
 
-// Gin Rummy lives on the /gin namespace of this same socket.io server. It is
+// Napoletane Gin Rummy lives on the /gin namespace of this same socket.io server. It is
 // given display names through the Guesswhere cookie everything on the domain
 // shares, but takes only the name: it keeps no stats and needs no account row,
 // so a player with no database behind them is simply a guest.
@@ -954,11 +954,11 @@ if (process.env.NODE_ENV === 'production') {
     res.sendFile(path.join(trioPath, 'index.html'));
   });
 
-  // Gin Rummy — its own Vite build (vite.gin.config.ts, base '/gin/') output to
-  // gin-dist. This is the static half only. The multiplayer half is the /gin
-  // socket.io NAMESPACE attached above, which shares this server's transport
-  // because the hub Worker routes the fixed /socket.io path here and a second
-  // socket.io instance would collide with Blitz's.
+  // Napoletane Gin Rummy -- its own Vite build (vite.gin.config.ts, base
+  // '/gin/') output to gin-dist. This is the static half only. The multiplayer
+  // half is the /gin socket.io NAMESPACE attached above, which shares this
+  // server's transport because the hub Worker routes the fixed /socket.io path
+  // here and a second socket.io instance would collide with Blitz's.
   //
   // The entry is gin.html rather than index.html (it is a named Rollup input),
   // so static is told to treat it as the directory index (that is what answers
