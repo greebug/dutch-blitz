@@ -4,11 +4,23 @@
   "private": true,
   "scripts": {
     "dev": "vite --host",
+    "dev:gin": "vite --host --config vite.gin.config.ts",
     "server": "tsx watch server/index.ts",
     "start": "concurrently \"npm run dev\" \"npm run server\"",
-    "build": "vite build",
+    "build": "vite build && npm run build:gin",
+    "build:gin": "vite build --config vite.gin.config.ts",
     "build:start": "npm run build && NODE_ENV=production tsx server/index.ts",
-    "preview": "vite preview --host"
+    "preview": "vite preview --host",
+    "test": "tsx --test src/**/*.test.ts src/gin/lab/*.test.ts server/*.test.ts",
+    "gin:arena": "tsx src/gin/arena.run.ts",
+    "gin:review": "tsx src/gin/review.run.ts",
+    "lab:tune": "tsx src/gin/lab/tune.run.ts",
+    "lab:league": "tsx src/gin/lab/league.run.ts",
+    "lab:duel": "tsx src/gin/lab/duel.run.ts",
+    "lab:equity": "tsx src/gin/lab/equity.run.ts",
+    "lab:championship": "tsx src/gin/lab/championship.run.ts",
+    "lab:referee": "tsx src/gin/lab/referee.run.ts",
+    "lab:logs": "tsx src/gin/lab/logs.run.ts"
   },
   "dependencies": {
     "express": "^5.2.1",

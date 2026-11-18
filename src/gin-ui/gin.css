@@ -1,0 +1,746 @@
+/* Gin Rummy — its own look, deliberately not Blitz's barn red or Guesswhere's
+   night atlas: a card table. Deep green felt, cream cards, brass edges. */
+
+:root {
+  --felt:      #1d3a2e;
+  --felt-deep: #152b22;
+  --cream:     #f3ead6;
+  --ink:       #24201a;
+  --brass:     #c9962a;
+  --wine:      #b2392f;
+  --mute:      rgba(243, 234, 214, 0.62);
+  --faint:     rgba(243, 234, 214, 0.34);
+  /* Bigger than a plain glyph card needed: the faces now carry real pip
+     arrangements and figurative courts, and below roughly 60px the Fante and
+     the Re stop being tellable apart. But lower at the top than it was, since
+     eleven cards now sit in one unbroken row with a glow ring around every
+     melded one, and the rings need room between neighbours or two melds bleed
+     into each other. */
+  --card-w:    clamp(56px, 6.2vw, 70px);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(120% 90% at 50% 0%, var(--felt) 0%, var(--felt-deep) 70%);
+  color: var(--cream);
+  font-family: Karla, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  min-height: 100dvh;
+}
+
+.gin {
+  /* Wider than it was. Eleven cards in a row with breathing space between them
+     is simply a wider thing than four boxed melds, and wrapping the hand onto
+     two lines costs the player the end of their own hand. */
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 18px 16px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* --- Header ---------------------------------------------------------------- */
+
+.gin-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.gin-title {
+  font-family: 'Alfa Slab One', Georgia, serif;
+  font-size: clamp(22px, 5vw, 30px);
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+.gin-sub { margin: 2px 0 0; color: var(--mute); font-size: 13px; }
+
+.gin-scores { display: flex; align-items: center; gap: 14px; }
+
+.gin-score { text-align: center; line-height: 1.1; }
+.gin-score span { display: block; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); }
+.gin-score strong { font-family: 'Alfa Slab One', Georgia, serif; font-size: 20px; }
+
+.gin-level {
+  display: flex; flex-direction: column; gap: 3px;
+  font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint);
+}
+.gin-level select {
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--cream);
+  border: 1px solid rgba(201, 150, 42, 0.45);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* --- Opponent + table ------------------------------------------------------ */
+
+.gin-opponent { display: flex; align-items: center; gap: 12px; }
+.gin-opponent__label { font-size: 13px; color: var(--mute); }
+
+.gin-table {
+  display: flex;
+  justify-content: center;
+  gap: clamp(18px, 6vw, 40px);
+  padding: 14px 0;
+  border-top: 1px solid rgba(243, 234, 214, 0.1);
+  border-bottom: 1px solid rgba(243, 234, 214, 0.1);
+}
+
+.gin-pile { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.gin-pile__note { margin: 0; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
+
+.gin-pilebtn {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  color: var(--cream); font: inherit;
+  border-radius: 10px;
+  transition: transform 0.14s ease, opacity 0.14s ease;
+}
+.gin-pilebtn span { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
+.gin-pilebtn:hover:not(:disabled) { transform: translateY(-3px); }
+.gin-pilebtn:disabled { opacity: 0.4; cursor: default; }
+.gin-pilebtn:focus-visible { outline: 2px solid var(--brass); outline-offset: 4px; }
+
+/* --- Cards ----------------------------------------------------------------- */
+
+.gin-card {
+  position: relative;
+  /* Not text. Dragging across the row used to leave every card highlighted,
+     and the next click went on clearing the selection instead of playing. The
+     native element drag goes with it: a card is dragged by the game's own
+     code, not by the browser's. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+  width: var(--card-w);
+  aspect-ratio: 2 / 3;
+  background: var(--cream);
+  border: 1px solid rgba(36, 32, 26, 0.35);
+  border-radius: 7px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+  display: block;
+  overflow: hidden;
+  color: var(--ink);
+  padding: 0;
+  font: inherit;
+}
+
+/* The face fills the card; everything else on the card is an overlay badge. */
+.gin-card__face { display: block; width: 100%; height: 100%; }
+
+.gin-card__index {
+  font-family: 'Alfa Slab One', Georgia, serif;
+  font-size: 19px;
+  dominant-baseline: middle;
+}
+
+.gin-card.is-clickable { cursor: pointer; transition: transform 0.12s ease, box-shadow 0.12s ease; }
+.gin-card.is-clickable:hover { transform: translateY(-7px); box-shadow: 0 7px 14px rgba(0, 0, 0, 0.4); }
+.gin-card.is-clickable:focus-visible { outline: 2px solid var(--brass); outline-offset: 3px; }
+.gin-card.is-dim { opacity: 0.68; }
+
+.gin-card__pts {
+  position: absolute; bottom: 2px; right: 5px;
+  font-size: 10px; color: rgba(36, 32, 26, 0.55);
+  pointer-events: none;
+}
+
+/* The patterned back of an Italian deck: fine diagonal weave inside a gold
+   rule, rather than a flat colour. */
+.gin-card--back {
+  background:
+    repeating-linear-gradient(45deg, rgba(0,0,0,0.16) 0 3px, transparent 3px 6px),
+    repeating-linear-gradient(-45deg, rgba(255,255,255,0.1) 0 3px, transparent 3px 6px),
+    linear-gradient(160deg, #a2362c, #7d2b24);
+  border-color: rgba(227, 176, 42, 0.55);
+  box-shadow: inset 0 0 0 2px rgba(227, 176, 42, 0.35), 0 2px 5px rgba(0, 0, 0, 0.35);
+}
+.gin-card--empty {
+  background: rgba(0, 0, 0, 0.22);
+  border-style: dashed;
+  box-shadow: none;
+}
+
+.gin-stack { position: relative; display: inline-flex; }
+.gin-stack__count {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  font-family: 'Alfa Slab One', Georgia, serif;
+  font-size: 15px;
+  color: var(--cream);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+/* --- Hand ------------------------------------------------------------------ */
+
+.gin-handwrap { display: flex; flex-direction: column; gap: 10px; }
+
+.gin-handmeta { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+
+.gin-dead {
+  font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint);
+}
+.gin-dead strong {
+  font-family: 'Alfa Slab One', Georgia, serif;
+  font-size: 18px; margin-left: 5px; color: var(--cream);
+  letter-spacing: normal;
+}
+/* At or under the threshold, so a knock is available -- worth shouting. */
+.gin-dead.is-ok strong { color: #7ad6a0; }
+
+.gin-meldcount, .gin-hint { font-size: 12px; color: var(--mute); }
+.gin-arrange { font-size: 11px; color: var(--faint); letter-spacing: 0.03em; }
+.gin-tidy {
+  background: none;
+  border: 1px solid rgba(243, 234, 214, 0.22);
+  border-radius: 999px;
+  color: var(--mute);
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+.gin-tidy:hover { color: var(--cream); border-color: var(--brass); }
+.gin-tidy:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.gin-hint { margin-left: auto; color: var(--brass); }
+
+/* One row, in rank order, always. The melds are drawn around the cards instead
+   of regrouping them, so a card never moves because of what it belongs to --
+   only because of what it is. The gap is sized for the outer glow ring. */
+.gin-hand {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  /* Row gap carries the column gap plus room for the note hanging below each
+     card -- without it a wrapped row writes its numbers across the cards on
+     the line beneath. */
+  column-gap: 16px;
+  row-gap: 34px;
+  flex-wrap: wrap;
+  padding-top: 14px;
+  /* Room for the if-thrown note that hangs below each card. */
+  padding-bottom: 26px;
+}
+
+/* --- Melds, as glow rather than as boxes ----------------------------------- */
+
+.gin-slot {
+  position: relative;
+  display: inline-flex;
+  user-select: none;
+  -webkit-user-select: none;
+  border-radius: 7px;
+  /* Dragging is pointer-driven, so the browser must not claim the gesture as a
+     scroll or a text selection before the first pointermove arrives. */
+  touch-action: none;
+}
+
+/* What throwing this card would leave you holding -- the number the decision
+   actually turns on. Below the card rather than on it: the card clips to its
+   own rounded corners, and a badge overlapping an edge came out sliced. */
+.gin-slot__note {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 21px;
+  padding: 0 5px;
+  text-align: center;
+  border-radius: 999px;
+  background: rgba(21, 43, 34, 0.92);
+  border: 1px solid rgba(201, 150, 42, 0.45);
+  color: var(--mute);
+  font-size: 11px;
+  line-height: 1.55;
+  pointer-events: none;
+}
+/* The cheapest throw on the table, which is the only one worth picking out. */
+.gin-slot.is-cheapest .gin-slot__note {
+  background: #7ad6a0;
+  border-color: #7ad6a0;
+  color: #10261b;
+  font-weight: 700;
+}
+
+/* Concentric, because a card can be in two melds at once -- a Jack that is
+   both the head of a run and one of three Jacks -- and the two have to stay
+   separately readable. The border is the part that always renders; the glow is
+   a colour-mix on top and may be dropped by an older engine without taking the
+   ring with it. */
+.gin-ring {
+  position: absolute;
+  pointer-events: none;
+  border: 2px solid var(--ring);
+  border-radius: 10px;
+  box-shadow:
+    0 0 11px 1px color-mix(in srgb, var(--ring) 58%, transparent),
+    inset 0 0 9px color-mix(in srgb, var(--ring) 26%, transparent);
+}
+.gin-ring[data-ring='0'] { inset: -3px; }
+.gin-ring[data-ring='1'] { inset: -7px; border-radius: 13px; }
+
+/* Keeping its place in the row while the card itself is still crossing the
+   table. The dashed outline is the gap the hand has opened to receive it. */
+.gin-slot.is-airborne > .gin-card { visibility: hidden; }
+.gin-slot.is-airborne > .gin-ring { opacity: 0; }
+.gin-slot.is-airborne::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px dashed rgba(243, 234, 214, 0.3);
+  border-radius: 7px;
+}
+
+.gin-slot.is-held > .gin-card { visibility: hidden; }
+.gin-slot.is-held > .gin-ring { opacity: 0; }
+.gin-slot.is-held > .gin-slot__note { opacity: 0.35; }
+.gin-slot.is-held::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px dashed rgba(201, 150, 42, 0.6);
+  border-radius: 7px;
+  background: rgba(201, 150, 42, 0.08);
+}
+
+/* --- A card in hand -------------------------------------------------------- */
+
+.gin-draglayer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 70;
+}
+/* Tilted and lifted, so it reads as held above the table rather than as part
+   of the row it came out of. */
+.gin-drag {
+  position: fixed;
+  transform: rotate(-3deg) scale(1.07);
+  filter: drop-shadow(0 15px 18px rgba(0, 0, 0, 0.5));
+  transition: transform 0.13s ease;
+}
+.gin-drag.is-over { transform: rotate(3deg) scale(1.15); }
+
+/* The pile, while a card is being held over it. */
+.gin-pile.is-drop .gin-card {
+  outline: 2px dashed var(--brass);
+  outline-offset: 5px;
+}
+.gin-pile.is-drop .gin-pile__note { color: var(--brass); }
+
+/* In no meld, so it is what the deadwood number is counting. Marked as well as
+   glowless: the glows say what a card could be part of, this says what it is
+   costing, and those genuinely differ when two melds compete for one card. */
+.gin-card.is-dead { filter: saturate(0.8) brightness(0.93); }
+.gin-card.is-dead::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, rgba(224, 96, 79, 0.9), transparent);
+}
+
+/* --- Cards in flight -------------------------------------------------------- */
+
+.gin-flightlayer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+}
+.gin-flight {
+  position: fixed;
+  width: var(--card-w);
+  aspect-ratio: 2 / 3;
+  will-change: transform;
+  filter: drop-shadow(0 12px 20px rgba(0, 0, 0, 0.55));
+}
+.gin-flight > .gin-card { width: 100%; }
+
+/* Said as well as shown. A stock draw and a discard draw look alike once the
+   card has landed, and the difference is the most useful thing on the table. */
+.gin-flightnote {
+  margin: -8px 0 0;
+  min-height: 1.3em;
+  text-align: center;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--brass);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+.gin-flightnote.is-on { opacity: 1; }
+
+.gin-actions { display: flex; gap: 10px; flex-wrap: wrap; min-height: 42px; }
+/* Nothing to offer -- the hand is over, or there is nothing to knock on. The
+   row still reserves its height while the hand is live, so the board does not
+   jump every time a knock becomes available, but an empty one at the end of a
+   hand is just a gap between the table and the result. */
+.gin-actions:empty { min-height: 0; }
+
+.gin-btn {
+  font: inherit; font-weight: 700;
+  border-radius: 999px;
+  padding: 10px 20px;
+  border: 1px solid rgba(243, 234, 214, 0.25);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--cream);
+  cursor: pointer;
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+.gin-btn:hover { transform: translateY(-2px); filter: brightness(1.1); }
+.gin-btn:focus-visible { outline: 2px solid var(--brass); outline-offset: 3px; }
+.gin-btn--go { background: #2f7d5e; border-color: #7ad6a0; }
+.gin-btn--gold { background: var(--brass); border-color: #f0c766; color: #2a1f06; }
+
+/* --- Result ---------------------------------------------------------------- */
+
+/* Tight on purpose. Everything in here is read once, at a glance, before the
+   next hand -- so it is sized to be taken in whole rather than to breathe. */
+.gin-result {
+  background: rgba(0, 0, 0, 0.34);
+  border: 1px solid rgba(201, 150, 42, 0.45);
+  border-radius: 12px;
+  padding: 11px 13px 12px;
+  display: flex; flex-direction: column; gap: 7px; align-items: flex-start;
+}
+.gin-result h2 { font-family: 'Alfa Slab One', Georgia, serif; margin: 0; font-size: 17px; }
+.gin-result__detail { margin: 0; color: var(--mute); font-size: 13px; }
+.gin-result__foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.gin-result__foot .gin-btn { padding: 7px 16px; }
+.gin-result__note { margin: 0; font-size: 11px; color: var(--faint); letter-spacing: 0.1em; text-transform: uppercase; }
+/* --- Showdown --------------------------------------------------------------
+
+   Two whole hands side by side, each broken into its melds, which is more
+   cards on screen at once than anywhere else in the game -- hence its own
+   smaller card size rather than the table's. */
+.gin-showdown {
+  --card-w: clamp(38px, 4.1vw, 48px);
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.gin-side {
+  border: 1px solid rgba(243, 234, 214, 0.12);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 8px 10px 9px;
+}
+/* The knocker's side is the one everything else is measured against. */
+.gin-side[data-role='knocker'] { border-color: rgba(201, 150, 42, 0.45); }
+
+.gin-side__title {
+  margin: 0 0 7px;
+  font-family: 'Alfa Slab One', Georgia, serif;
+  font-size: 14px;
+  display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap;
+}
+.gin-side__tag {
+  font-family: Karla, system-ui, sans-serif;
+  font-weight: 400;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.gin-meldrow { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; }
+.gin-meldbox { display: flex; flex-direction: column; gap: 4px; }
+.gin-meldbox__cards { display: flex; gap: 10px; flex-wrap: wrap; }
+.gin-meldbox__tag {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.gin-meldbox[data-kind='dead'] .gin-meldbox__tag { color: rgba(224, 96, 79, 0.85); }
+
+/* A card that arrived from the other hand. The ring colour carries it, and the
+   badge carries it again for anyone who cannot rely on the colour -- which
+   matters here more than anywhere, since the single question this panel exists
+   to answer is which of these cards were the knocker's to begin with. */
+.gin-slot.is-laid::after,
+.gin-slot.is-going::after {
+  content: '↦';
+  position: absolute;
+  top: -10px; right: -8px;
+  width: 17px; height: 17px;
+  border-radius: 999px;
+  background: #e0604f;
+  color: #2d100c;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  line-height: 1;
+}
+.gin-slot.is-going::after { opacity: 0.75; }
+
+.gin-legend {
+  margin: 0;
+  font-size: 11px;
+  color: var(--mute);
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  line-height: 1.5;
+}
+.gin-key {
+  width: 13px; height: 13px;
+  flex: none;
+  border-radius: 3px;
+  border: 2px solid var(--key);
+  background: color-mix(in srgb, var(--key) 34%, transparent);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--key) 55%, transparent);
+}
+.gin-legend .gin-key + * { margin-right: 4px; }
+.gin-legend .gin-key:not(:first-child) { margin-left: 12px; }
+
+@media (min-width: 760px) {
+  .gin-showdown { grid-template-columns: 1fr 1fr; }
+}
+
+/* --- Mode switch, table bar, lobby ------------------------------------------ */
+
+.gin-modes {
+  display: flex;
+  border: 1px solid rgba(201, 150, 42, 0.4);
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.26);
+}
+.gin-mode {
+  font: inherit; font-weight: 700; font-size: 13px;
+  padding: 8px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--mute);
+  cursor: pointer;
+}
+.gin-mode.is-on { background: var(--brass); color: #2a1f06; }
+.gin-mode:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+
+/* One strip for everything that is true of the sitting rather than the hand:
+   who is here, the running score, and the ways out. */
+.gin-tablebar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(243, 234, 214, 0.12);
+  font-size: 13px;
+}
+.gin-tablebar .gin-btn { padding: 5px 12px; font-size: 12px; }
+.gin-btn--quiet { background: rgba(0, 0, 0, 0.3); border-color: rgba(243, 234, 214, 0.18); }
+.gin-tablecode strong {
+  font-family: 'Alfa Slab One', Georgia, serif;
+  letter-spacing: 0.22em;
+  font-size: 18px;
+  color: var(--brass);
+}
+.gin-tablescore { margin-left: auto; color: var(--mute); }
+.gin-tablescore strong { font-family: 'Alfa Slab One', Georgia, serif; color: var(--cream); font-size: 16px; }
+
+.gin-lobby {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 14px;
+}
+.gin-lobby__half {
+  border: 1px solid rgba(243, 234, 214, 0.14);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.22);
+  padding: 18px;
+  display: flex; flex-direction: column; gap: 10px; align-items: flex-start;
+}
+.gin-lobby__half h2 { font-family: 'Alfa Slab One', Georgia, serif; font-size: 17px; margin: 0; }
+.gin-lobby__half p { margin: 0; color: var(--mute); font-size: 13px; }
+.gin-lobby__half form { display: flex; gap: 8px; align-items: center; }
+
+.gin-codeinput {
+  font-family: 'Alfa Slab One', Georgia, serif;
+  font-size: 20px;
+  letter-spacing: 0.22em;
+  width: 7ch;
+  padding: 7px 10px;
+  text-align: center;
+  text-transform: uppercase;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--cream);
+  border: 1px solid rgba(201, 150, 42, 0.45);
+  border-radius: 8px;
+}
+.gin-codeinput:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+/* Whatever the server last said, in its own words. Illegal moves, a partner
+   walking out and a dropped connection all surface here rather than being
+   guessed at locally. */
+.gin-banner {
+  margin: 0;
+  padding: 9px 14px;
+  border-radius: 9px;
+  background: rgba(178, 57, 47, 0.26);
+  border: 1px solid rgba(224, 83, 69, 0.5);
+  font-size: 13px;
+}
+
+.gin-note {
+  margin: 0;
+  color: var(--mute);
+  font-size: 14px;
+  display: flex; flex-direction: column; gap: 10px; align-items: flex-start;
+}
+.gin-note strong { color: var(--brass); letter-spacing: 0.2em; font-family: 'Alfa Slab One', Georgia, serif; }
+
+.gin-online { display: flex; flex-direction: column; gap: 18px; }
+
+/* --- The word, when a hand ends --------------------------------------------
+   Pure celebration. The showdown panel already says who won and by how much,
+   in a form you can read at your own pace; this is the other thing a real
+   table gives you, which no amount of correct scoring does. Your own knock
+   bursts on the right, theirs on the left, so you know whose it is before you
+   have read it. */
+
+.gin-burst {
+  position: fixed;
+  right: clamp(10px, 5vw, 72px);
+  top: 36%;
+  z-index: 90;
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+  transform: rotate(-7deg);
+}
+.gin-burst.is-theirs {
+  right: auto;
+  left: clamp(10px, 5vw, 72px);
+  transform: rotate(6deg);
+}
+
+.gin-burst.is-knock  { --burst: #ffd35c; --edge: #8a4b12; }
+.gin-burst.is-gin    { --burst: #8ff0b6; --edge: #10533a; }
+.gin-burst.is-biggin { --burst: #ffa8e6; --edge: #6a1150; }
+/* Nobody's hand and nobody's points, so it is cool where the others are warm,
+   and it sits in the middle rather than on either player's side. */
+.gin-burst.is-push { --burst: #a8d4ff; --edge: #123a63; }
+.gin-burst.is-nobody {
+  right: auto;
+  left: 50%;
+  top: 30%;
+  transform: translateX(-50%) rotate(-4deg);
+}
+
+.gin-burst__word {
+  margin: 0;
+  font-family: 'Alfa Slab One', Georgia, serif;
+  font-size: clamp(38px, 6.6vw, 80px);
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--burst);
+}
+
+/* Bubble letters by stacked shadow rather than -webkit-text-stroke, which
+   without paint-order support eats half the glyph instead of ringing it. */
+.gin-burst__ch {
+  display: inline-block;
+  text-shadow:
+    -3px -3px 0 var(--edge), 3px -3px 0 var(--edge),
+    -3px 3px 0 var(--edge), 3px 3px 0 var(--edge),
+    -4px 0 0 var(--edge), 4px 0 0 var(--edge),
+    0 -4px 0 var(--edge), 0 4px 0 var(--edge),
+    0 9px 0 rgba(0, 0, 0, 0.3),
+    0 0 34px color-mix(in srgb, var(--burst) 70%, transparent);
+  animation: gin-pop 1800ms cubic-bezier(0.2, 1.5, 0.35, 1) both;
+}
+
+/* Overshoot, settle, then go -- a balloon arriving rather than a label
+   appearing. Letter by letter, each a beat behind the last. */
+@keyframes gin-pop {
+  0%   { transform: scale(0.12) rotate(-20deg); opacity: 0; }
+  24%  { transform: scale(1.24) rotate(5deg); opacity: 1; }
+  36%  { transform: scale(0.93) rotate(-2deg); }
+  48%  { transform: scale(1.03) rotate(0deg); }
+  74%  { transform: scale(1) rotate(0deg); opacity: 1; }
+  100% { transform: scale(1.34) rotate(0deg); opacity: 0; }
+}
+
+.gin-burst__pop { position: absolute; inset: 0; }
+.gin-burst__bit {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--bit);
+  animation: gin-bit 1050ms cubic-bezier(0.16, 0.84, 0.3, 1) both;
+}
+@keyframes gin-bit {
+  0% {
+    transform: translate(-50%, -50%) rotate(var(--angle)) translateX(0) scale(0.2);
+    opacity: 0;
+  }
+  18% { opacity: 1; }
+  100% {
+    transform: translate(-50%, -50%) rotate(var(--angle)) translateX(var(--reach)) scale(0.4);
+    opacity: 0;
+  }
+}
+
+/* No motion wanted: the word still arrives, it just does not bounce. */
+.gin-burst.is-still .gin-burst__ch { animation: gin-say 1400ms linear both; }
+@keyframes gin-say {
+  0% { opacity: 0; }
+  10% { opacity: 1; }
+  78% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+
+@media (max-width: 520px) {
+  /* Smaller floor than the desktop clamp: ten cards at the desktop minimum of
+     42px plus gaps is ~470px, which does not fit a 375px phone even wrapped
+     without stranding a lone card on a second row. */
+  :root { --card-w: clamp(52px, 15.5vw, 64px); }
+  .gin { padding: 14px 10px 30px; gap: 14px; }
+  .gin-hand { column-gap: 11px; row-gap: 30px; padding-top: 10px; padding-bottom: 26px; }
+  /* Centred, because a phone has no side to put it on. */
+  .gin-burst,
+  .gin-burst.is-nobody,
+  .gin-burst.is-theirs {
+    right: auto;
+    left: 50%;
+    top: 28%;
+    transform: translateX(-50%) rotate(-5deg);
+  }
+  .gin-burst__word { font-size: clamp(34px, 13vw, 58px); }
+  .gin-handmeta { gap: 8px; }
+  .gin-showdown { --card-w: 46px; }
+  .gin-meldrow { gap: 14px; }
+  .gin-meldbox__cards { gap: 11px; }
+  .gin-hint { margin-left: 0; width: 100%; }
+  .gin-tablescore { margin-left: 0; width: 100%; }
+}
+
+/* Scripted motion is gated in motion.ts, which the media query cannot reach;
+   this covers the transitions declared here. */
+@media (prefers-reduced-motion: reduce) {
+  .gin-pilebtn, .gin-card.is-clickable, .gin-btn, .gin-flightnote { transition: none; }
+  .gin-drag { transition: none; }
+}
+
+.gin-tablescore__to { font-size: 12px; opacity: 0.75; }

@@ -15,6 +15,9 @@ import { Server, Socket } from 'socket.io';
 import path from 'path';
 import { Pool } from 'pg';
 import { randomUUID } from 'crypto';
+import { attachGin } from './gin';
+import { attachGinLog } from './ginLog';
+
 import { gameReducer } from '../src/game/engine';
 import { dealPlayer } from '../src/game/deck';
 import { getBotAction, getBotInterval } from '../src/game/bot';
@@ -371,6 +374,22 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: { origin: '*' },
 });
+
+// Gin Rummy lives on the /gin namespace of this same socket.io server. It is
+// given display names through the Guesswhere cookie everything on the domain
+// shares, but takes only the name: it keeps no stats and needs no account row,
+// so a player with no database behind them is simply a guest.
+attachGin(io, {
+  async resolveName(cookieHeader) {
+    const user = await resolveGwUser(cookieHeader);
+    return user?.username ?? null;
+  },
+});
+
+// Hand logs from solo games against the computer: see server/ginLog.ts.
+attachGinLog(app, pool, async (cookieHeader) => (await resolveGwUser(cookieHeader))?.username ?? null).catch(
+  (e) => console.error('gin log:', e)
+);
 
 // ─── Blueberry Trio: community puzzle API ───────────────────────────────────────
 // Open publishing (no auth) — the client validates uniqueness before posting; the
@@ -933,6 +952,24 @@ if (process.env.NODE_ENV === 'production') {
   app.get('/trio', (_req, res) => res.redirect('/trio/')); // bare path -> add slash
   app.get('/trio/{*splat}', (_req, res) => { // SPA fallback for deep paths
     res.sendFile(path.join(trioPath, 'index.html'));
+  });
+
+  // Gin Rummy — its own Vite build (vite.gin.config.ts, base '/gin/') output to
+  // gin-dist. This is the static half only. The multiplayer half is the /gin
+  // socket.io NAMESPACE attached above, which shares this server's transport
+  // because the hub Worker routes the fixed /socket.io path here and a second
+  // socket.io instance would collide with Blitz's.
+  //
+  // The entry is gin.html rather than index.html (it is a named Rollup input),
+  // so static is told to treat it as the directory index (that is what answers
+  // bare /gin/), and the fallback below names it explicitly. Without `index`,
+  // /gin/ falls through to the redirect -- and Express 5's non-strict routing
+  // matches /gin/ against '/gin', so it redirects to itself forever.
+  const ginPath = path.join(process.cwd(), 'gin-dist');
+  app.use('/gin', express.static(ginPath, { index: 'gin.html' })); // /gin/ and /gin/assets/*
+  app.get('/gin', (_req, res) => res.redirect('/gin/'));
+  app.get('/gin/{*splat}', (_req, res) => {
+    res.sendFile(path.join(ginPath, 'gin.html'));
   });
 
   // Card game: static assets + SPA fallback, both under /blitz to match Vite's

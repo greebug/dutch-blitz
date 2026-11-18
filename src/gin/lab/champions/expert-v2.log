@@ -1,0 +1,52 @@
+gen 0: best 2.881 (worst vs incumbent 0.00), incumbent 2.881, 6.6s
+gen 1: best 2.899 (worst vs incumbent 0.18), incumbent 2.871, 5.9s
+gen 2: best 2.941 (worst vs incumbent 0.00), incumbent 2.941, 6.2s
+gen 3: best 3.051 (worst vs incumbent 0.20), incumbent 2.911, 6.1s
+gen 4: best 2.973 (worst vs incumbent 0.13), incumbent 2.911, 6.5s
+gen 5: best 3.003 (worst vs incumbent 0.10), incumbent 2.933, 6.1s
+gen 6: best 2.977 (worst vs incumbent 0.05), incumbent 2.948, 6.1s
+gen 7: best 2.785 (worst vs incumbent 0.07), incumbent 2.682, 6.2s
+gen 8: best 2.872 (worst vs incumbent 0.05), incumbent 2.814, 6.1s
+gen 9: best 2.853 (worst vs incumbent 0.09), incumbent 2.719, 6.1s
+gen 10: best 2.889 (worst vs incumbent -0.12), incumbent 2.854, 6.2s
+gen 11: best 2.882 (worst vs incumbent 0.13), incumbent 2.866, 6.1s
+gen 12: best 2.999 (worst vs incumbent 0.07), incumbent 2.915, 6.0s
+gen 13: best 2.918 (worst vs incumbent 0.09), incumbent 2.898, 6.1s
+gen 14: best 3.015 (worst vs incumbent -0.01), incumbent 2.927, 6.3s
+gen 15: best 2.995 (worst vs incumbent 0.08), incumbent 2.919, 6.2s
+gen 16: best 2.733 (worst vs incumbent 0.06), incumbent 2.637, 6.1s
+gen 17: best 2.921 (worst vs incumbent -0.00), incumbent 2.854, 6.2s
+gen 18: best 2.983 (worst vs incumbent 0.00), incumbent 2.933, 6.1s
+gen 19: best 2.837 (worst vs incumbent 0.08), incumbent 2.765, 6.1s
+gen 20: best 2.942 (worst vs incumbent 0.00), incumbent 2.900, 6.1s
+gen 21: best 2.941 (worst vs incumbent 0.09), incumbent 2.865, 6.1s
+gen 22: best 2.936 (worst vs incumbent 0.01), incumbent 2.842, 6.2s
+gen 23: best 2.938 (worst vs incumbent -0.02), incumbent 2.928, 6.1s
+gen 24: best 2.859 (worst vs incumbent 0.14), incumbent 2.753, 6.1s
+gen 25: best 2.803 (worst vs incumbent 0.06), incumbent 2.740, 6.2s
+gen 26: best 2.962 (worst vs incumbent 0.07), incumbent 2.933, 6.1s
+gen 27: best 3.072 (worst vs incumbent -0.01), incumbent 3.003, 6.1s
+gen 28: best 3.213 (worst vs incumbent 0.17), incumbent 3.148, 6.1s
+gen 29: best 2.886 (worst vs incumbent 0.08), incumbent 2.788, 6.1s
+gen 30: best 2.802 (worst vs incumbent 0.12), incumbent 2.740, 6.1s
+gen 31: best 2.972 (worst vs incumbent 0.00), incumbent 2.968, 6.1s
+gen 32: best 2.847 (worst vs incumbent 0.05), incumbent 2.801, 6.1s
+gen 33: best 2.979 (worst vs incumbent -0.03), incumbent 2.949, 6.1s
+gen 34: best 2.966 (worst vs incumbent 0.08), incumbent 2.874, 6.1s
+gen 35: best 3.097 (worst vs incumbent 0.10), incumbent 3.048, 6.2s
+gen 36: best 2.989 (worst vs incumbent 0.07), incumbent 2.950, 6.2s
+gen 37: best 3.051 (worst vs incumbent 0.08), incumbent 2.906, 6.1s
+gen 38: best 2.858 (worst vs incumbent -0.00), incumbent 2.828, 6.1s
+gen 39: best 3.034 (worst vs incumbent 0.08), incumbent 2.963, 6.2s
+  vs heuristic-sharp    +2.33 +/- 0.06 per hand
+  vs heuristic-steady   +3.49 +/- 0.06 per hand
+  vs greedy             +1.19 +/- 0.05 per hand
+  vs hoarder-2          +2.15 +/- 0.06 per hand
+  vs gin-hunter         +2.08 +/- 0.07 per hand
+  vs magpie             +9.11 +/- 0.07 per hand
+  vs careless           +18.99 +/- 0.08 per hand
+  vs casual             +7.83 +/- 0.08 per hand
+  vs cautious           +3.13 +/- 0.06 per hand
+  vs expert-seed        +2.39 +/- 0.06 per hand
+  vs forgetful          +4.09 +/- 0.06 per hand
+  vs human              +3.24 +/- 0.06 per hand

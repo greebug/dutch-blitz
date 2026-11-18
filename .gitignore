@@ -1,4 +1,6 @@
 node_modules
 dist
+gin-dist
 .env
 *.local
+logs
