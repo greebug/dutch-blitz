@@ -9,6 +9,8 @@ import GinAnalysis from './GinAnalysis';
 import GinBoard from './GinBoard';
 import GinShowdown from './GinShowdown';
 import { BURST_MS } from './GinBurst';
+import { GinMatchWin } from './GinMatchWin';
+import { ScoreTally, TALLY_TOTAL_MS } from './ScoreTally';
 import { newMatchId, postHand, recordHand } from './handLog';
 
 /**
@@ -174,10 +176,19 @@ export default function GinSolo() {
       const m: Match = { id: newMatchId(), you: 0, bot: 0, hands: 1 };
       setMatch(m);
       setMatchOver(null);
+      setCelebrate(false);
       setHand(dealHand(lvl, { ...m, hands: 0 }));
     },
     [level]
   );
+
+  // --- The match won: announced once the points have landed on the score.
+  const [celebrate, setCelebrate] = useState(false);
+  useEffect(() => {
+    if (!matchOver) return;
+    const timer = setTimeout(() => setCelebrate(true), TALLY_TOTAL_MS);
+    return () => clearTimeout(timer);
+  }, [matchOver]);
 
   // --- A push: no score, no panel, and the next hand on its own.
   const pushed = state.phase === 'over' && state.score?.outcome === 'dead-hand';
@@ -228,9 +239,9 @@ export default function GinSolo() {
     <>
       <div className="gin-tablebar">
         <span className="gin-tablescore">
-          You <strong>{match.you}</strong>
+          You <ScoreTally value={match.you} />
           {' · '}
-          {opponentName} <strong>{match.bot}</strong>
+          {opponentName} <ScoreTally value={match.bot} />
           <span className="gin-tablescore__to"> to {TARGET}</span>
         </span>
         <label className="gin-level">
@@ -278,6 +289,15 @@ export default function GinSolo() {
       )}
 
       {review && <GinAnalysis hand={review} opponentLabel={opponentName} onClose={() => setReview(null)} />}
+
+      {celebrate && matchOver && (
+        <GinMatchWin
+          title={matchOver === 'you' ? 'You win!' : `${level === 'hard' ? 'The champion' : opponentName} wins!`}
+          detail={`${match.you} – ${match.bot} · first to ${TARGET}`}
+          mine={matchOver === 'you'}
+          onClose={() => setCelebrate(false)}
+        />
+      )}
     </>
   );
 }

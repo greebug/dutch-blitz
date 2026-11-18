@@ -2,9 +2,11 @@ import { type Card, cardFromIndex, cardIndex, describe } from '../cards';
 import { type GinAction, type Seat, apply, deal, viewFor } from '../game';
 import { analyzeHand as meldsOf } from '../melds';
 import { advancePublic, seated } from './adapter';
-import { type Explanation, champion } from './champion';
-import { type ExpertParams, liveOuts } from './expert';
-import { BIG_GIN, KNOCK, POINTS, type Public, blankPublic, deadwoodOf, deadwoodWithout, masksOf } from './fast';
+import { type Ends, type Explanation, champion } from './champion';
+import { type ExpertParams, expert, liveOuts } from './expert';
+import { makePolicy } from './panel';
+import { rng } from '../cards';
+import { BIG_GIN, KNOCK, POINTS, type Policy, type Public, blankPublic, deadwoodOf, deadwoodWithout, masksOf } from './fast';
 
 /**
  * Hand analysis for a person: every decision they made, what the champion
@@ -38,6 +40,14 @@ export interface HandForAnalysis {
   /** The person's seat. Seat 0 opens. */
   humanSeat: Seat;
   history: GinAction[];
+  /**
+   * Who sat across. The bot is modelled by the rollout expert, which is what
+   * Medium and Hard play, grabbing low upcards to shed high cards included. A
+   * person takes the upcard almost only to complete a meld (54 of 56 pickups
+   * in the logged games), so a two-player hand is played out against a model
+   * that does just that. Bot by default.
+   */
+  opponent?: 'bot' | 'human';
 }
 
 export type Verdict = 'best' | 'close' | 'inaccuracy' | 'mistake' | 'blunder' | 'forced';
@@ -191,6 +201,8 @@ interface Scene {
   holds?: number[];
   /** Share of worlds in which they would take [the best throw, yours] straight up. */
   takes?: [number, number];
+  /** How the play-outs ended for [the best throw, yours]. */
+  ends?: [Ends, Ends];
 }
 
 function when(scene: Scene, pickedAt: number): string {
@@ -313,6 +325,56 @@ function combos(hand: number[], card: number): { partner: number; needs: number[
     const hi = Math.max(r, q);
     const needs = hi - lo === 2 ? [b + lo + 1] : [lo - 1, hi + 1].filter((x) => x >= 0 && x <= 9).map((x) => b + x);
     out.push({ partner: b + q, needs: needs.filter((n) => !held[n]) });
+  }
+  return out;
+}
+
+/**
+ * When nothing on the table explains a throw, say what the play-outs saw.
+ *
+ * These are not reasons in the sense the others are -- no single card -- but
+ * they are what the verdict actually rests on, and a person can weigh them:
+ * whether the card thrown is one they would want, and how the hand tends to
+ * end either way. Only differences big enough to matter are mentioned.
+ */
+function playoutReasons(scene: Scene, x: number, y: number): string[] {
+  const out: string[] = [];
+  const keepX = `keeping ${the(x)}`;
+  if (scene.takes) {
+    const [tBest, tYours] = scene.takes;
+    if (tYours - tBest >= 0.06) {
+      out.push(
+        `${cap(the(x))} is more use to them: in the hands they could be holding, they would pick it up straight away ` +
+          `${pct(tYours)} of the time, against ${pct(tBest)} for ${the(y)}.`
+      );
+    }
+  }
+  const ends = scene.ends;
+  if (ends) {
+    const [best, yours] = ends;
+    const gin = best.gin - yours.gin;
+    if (gin >= 0.04) {
+      out.push(`${cap(keepX)}, you went gin in ${pct(best.gin)} of the play-outs; throwing it, only ${pct(yours.gin)}.`);
+    }
+    const theirsBest = best.theyKnock + best.theyGin;
+    const theirsYours = yours.theyKnock + yours.theyGin;
+    if (theirsYours - theirsBest >= 0.03) {
+      out.push(
+        `They got down first in ${pct(theirsYours)} of the play-outs after you threw ${the(x)}, ` +
+          `against ${pct(theirsBest)} after ${the(y)}.`
+      );
+    }
+    const undercut = yours.undercut - best.undercut;
+    if (undercut >= 0.03) {
+      out.push(`Your knocks got undercut in ${pct(yours.undercut)} of the play-outs your way, against ${pct(best.undercut)}.`);
+    }
+    if (!out.length) {
+      const winsBest = best.gin + best.knock + best.weUndercut;
+      const winsYours = yours.gin + yours.knock + yours.weUndercut;
+      if (winsBest - winsYours >= 0.02) {
+        out.push(`${cap(keepX)} won ${pct(winsBest)} of the play-outs, against ${pct(winsYours)} throwing it.`);
+      }
+    }
   }
   return out;
 }
@@ -447,7 +509,9 @@ function whyThrow(scene: Scene, mine: number, best: number, check: Moment['odds'
   // Nothing on the table explains it by itself: it comes from the play-outs
   // (whose numbers the review shows alongside).
   if (!plain && dy >= dx) {
-    out.push(`No single card on the table explains this one; keeping ${the(x)} simply plays out better from here.`);
+    const seen = playoutReasons(scene, x, y);
+    if (seen.length) out.push(...seen);
+    else out.push(`No single card on the table explains this one; keeping ${the(x)} simply plays out better from here.`);
   }
   if (dy < dx) out.push(`${plain ? 'It also leaves' : 'It leaves'} you on ${dy} deadwood instead of ${dx}.`);
   else if (dy > dx) out.push(`That holds even though it keeps ${dy} deadwood rather than ${dx}.`);
@@ -531,6 +595,13 @@ export function* analyzeHand(hand: HandForAnalysis, opts: AnalysisOptions): Gene
     explain: (info) => {
       last = info;
     },
+    ...(hand.opponent === 'human'
+      ? (() => {
+          const seed = opts.seed ?? hand.seed;
+          const pair: [Policy, Policy] = [expert(opts.rollout, rng(seed ^ 0x5bd1e995), 'me'), makePolicy({ kind: 'human' }, seed)];
+          return { rollers: () => pair };
+        })()
+      : {}),
   });
   const player = seated(policy);
   let state = deal(hand.seed);
@@ -608,6 +679,7 @@ export function* analyzeHand(hand: HandForAnalysis, opts: AnalysisOptions): Gene
             upcard: upIdx,
             holds: info.holds,
             takes: info.check?.takes,
+            ends: info.check?.ends,
           };
           if (moment.verdict !== 'close' && moment.verdict !== 'best') {
             moment.why = kind === 'draw' ? whyDraw(scene, mine, moment.odds) : whyThrow(scene, mine, bestCode, moment.odds, 'they');

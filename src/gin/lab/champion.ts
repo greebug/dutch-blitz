@@ -121,9 +121,35 @@ export interface Explanation {
    * for one. `takes`, for a throw: the share of worlds in which the opponent
    * (as the rollouts model them) would pick the thrown card straight up.
    */
-  check?: { moves: [number, number]; samples: [number[], number[]]; takes?: [number, number] };
+  check?: {
+    moves: [number, number];
+    samples: [number[], number[]];
+    takes?: [number, number];
+    /** How the replayed hands ended, as shares of the worlds, for each of the two moves. */
+    ends?: [Ends, Ends];
+  };
   /** Review mode: the chance, per card index, that the opponent holds it, from the inference. */
   holds?: number[];
+}
+
+/** How a hand ended, from the reviewed seat's side. Shares of the play-outs. */
+export interface Ends {
+  /** We went gin (or big gin). */
+  gin: number;
+  /** We knocked and it stood. */
+  knock: number;
+  /** We knocked and got undercut. */
+  undercut: number;
+  /** They knocked and it stood. */
+  theyKnock: number;
+  theyGin: number;
+  /** They knocked and we undercut them. */
+  weUndercut: number;
+  push: number;
+}
+
+function blankEnds(): Ends {
+  return { gin: 0, knock: 0, undercut: 0, theyKnock: 0, theyGin: 0, weUndercut: 0, push: 0 };
 }
 
 function holdsAll(live: Inference): number[] {
@@ -241,12 +267,26 @@ export function champion(options: ChampionOptions): Policy {
         if (phase === 'check' && !t.over && t.pub.turn !== seat && t.pub.pile.length) {
           // Would they take what we just threw? Asked of the rollout opponent
           // before the rollout begins (begin() resets it again afterwards).
+          // The same opponent the rollouts use, so the two numbers agree.
+          const opp = options.rollers?.()[1] ?? them;
           const theirs = t.seen[seat === 0 ? 1 : 0];
-          them.begin!(theirs);
-          if (them.draw(theirs)) lastTakes[k]++;
+          opp.begin?.(theirs);
+          if (opp.draw(theirs)) lastTakes[k]++;
         }
         rollout(t);
         out[k].push(value(t, scores));
+        if (phase === 'check') {
+          const e = lastEnds[k];
+          const gin = t.outcome === 'gin' || t.outcome === 'big-gin';
+          if (t.knocker === null) e.push++;
+          else if (t.knocker === seat) {
+            if (gin) e.gin++;
+            else if (t.outcome === 'undercut') e.undercut++;
+            else e.knock++;
+          } else if (gin) e.theyGin++;
+          else if (t.outcome === 'undercut') e.weUndercut++;
+          else e.theyKnock++;
+        }
         options.onRollout?.(phase, k, t);
       }
     }
@@ -286,6 +326,7 @@ export function champion(options: ChampionOptions): Policy {
   let lastMeans: number[] = [];
   let lastSamples: number[][] = [];
   let lastTakes: number[] = [0, 0];
+  let lastEnds: Ends[] = [blankEnds(), blankEnds()];
 
   /** Review mode: the independent replay of the chosen move against the one actually played. */
   function checked(
@@ -301,12 +342,18 @@ export function champion(options: ChampionOptions): Policy {
     if (k < 0 || k === chosen) return undefined;
     const pair = [chosen, k];
     lastTakes = [0, 0];
+    lastEnds = [blankEnds(), blankEnds()];
     const s = sample(seen, live, 2, (t, i) => apply(t, pair[i]), options.check, 'check');
     const n = Math.max(1, s[0].length);
     return {
       moves: [moves[chosen], played],
       samples: [s[0], s[1]],
       takes: [lastTakes[0] / n, lastTakes[1] / n],
+      ends: lastEnds.map((e) => {
+        const share = blankEnds();
+        for (const key of Object.keys(e) as (keyof Ends)[]) share[key] = e[key] / n;
+        return share;
+      }) as [Ends, Ends],
     };
   }
 

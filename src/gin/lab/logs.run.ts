@@ -70,7 +70,8 @@ function main(): void {
     .split('\n')
     .filter(Boolean)
     .map((line) => JSON.parse(line))
-    .filter((r: Record) => !onlyLevel || r.level === onlyLevel);
+    // Two-player hands (level "human") have no bot seat; this report is about the bots.
+    .filter((r: Record) => r.level !== 'human' && (!onlyLevel || r.level === onlyLevel));
   const good: { r: Record; s: GinState }[] = [];
   for (const r of records) {
     const s = replay(r);

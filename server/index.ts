@@ -16,7 +16,7 @@ import path from 'path';
 import { Pool } from 'pg';
 import { randomUUID } from 'crypto';
 import { attachGin } from './gin';
-import { attachGinLog } from './ginLog';
+import { attachGinLog, storeHand } from './ginLog';
 
 import { gameReducer } from '../src/game/engine';
 import { dealPlayer } from '../src/game/deck';
@@ -383,6 +383,10 @@ attachGin(io, {
   async resolveName(cookieHeader) {
     const user = await resolveGwUser(cookieHeader);
     return user?.username ?? null;
+  },
+  // Two-player hands go in the same log as solo ones, marked level 'human'.
+  logHand(record, players) {
+    storeHand(pool, players, record).catch((e) => console.error('gin log (online):', e));
   },
 });
 

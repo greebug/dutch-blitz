@@ -15,6 +15,9 @@ Napoletane gin, played in full matches to 100.
 | `equity.ts` | Chance of winning the match from any score, built backwards from the finish line using a measured distribution of single-hand results. |
 | `match.ts` | Matches to 100. Opening alternates every deal (pushes included); no game or box bonuses. These are assumptions — the ruleset only says "to 100". |
 | `analysis.ts` | Hand review for a person: the champion shadows their seat, searches every decision, re-prices any disagreement on fresh worlds (so the cost isn't flattered by best-of-N noise), grades it best / close / inaccuracy / mistake / blunder, and adds plain reasons read off the public record -- a discard that feeds their pickup, outs already buried, a knock undercut in N% of worlds. Powers the in-game **Analyze hand** button and `lab:logs --review`. |
+| `pull.run.ts` | Copies the live site's hand log (Postgres `gin_hands`) to `logs/gin-hands.prod.jsonl`. Run through the Railway CLI so the database address never touches disk: `railway run -p <project> -s Postgres -e production -- npm run lab:pull`. |
+| `luck.run.ts` | Duplicate replay of one match (`npm run lab:luck -- FILE --match ID`): each hand is re-dealt from its seed and played by the champion against itself in the same seats, so the margin is what the cards were worth to the person's seat. Actual minus that is play. |
+| `position.run.ts` | Judges a first-turn throw typed in from a screenshot (eleven cards, the drawn card, the upcard), when the hand's log is not to hand. `--opponent human` plays it out against the take-only-to-meld model instead of the expert. |
 | `adapter.ts` | Seats any lab player at the real referee through `GinView` + public history only. `adapter.test.ts` proves identical decisions in both engines. |
 | `pool.ts`, `worker.ts`, `jobs.ts` | All cores. Results are sums, so any number of workers add up exactly. |
 

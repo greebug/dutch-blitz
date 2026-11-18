@@ -28,7 +28,8 @@ const flag = (name: string, d: number) => {
 };
 const N = flag('--worlds', 3000);
 
-const records = readFileSync('logs/gin-hands.jsonl', 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+const fileAt = args.indexOf('--file');
+const records = readFileSync(fileAt >= 0 ? args[fileAt + 1] : 'logs/gin-hands.jsonl', 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
 const r = records.find((x) => x.matchId === matchId && String(x.hand) === handNo);
 if (!r) throw new Error('no such hand');
 const seat: Seat = r.humanSeat;

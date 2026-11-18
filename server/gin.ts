@@ -94,6 +94,8 @@ interface GinTable {
   target: number | null;
   /** The table seat that reached the target, until the next deal starts a new match. */
   matchWinner: Seat | null;
+  /** Names this match in the hand log; a new one starts with every new match. */
+  matchId: string;
   /** Every deal made at this table, pushes included. Its parity is who opens. */
   deals: number;
   /**
@@ -118,6 +120,11 @@ type WireAction =
 export interface GinDeps {
   /** Resolves a handshake cookie to a display name, or null for a guest. */
   resolveName(cookieHeader: string | undefined): Promise<string | null>;
+  /**
+   * Keep a finished hand, if there is anywhere to keep it. Called with a
+   * record the lab can replay (seed plus moves) and a label for its players.
+   */
+  logHand?(record: object, players: string): void;
 }
 
 export function attachGin(io: Server, deps: GinDeps): Namespace {
@@ -244,6 +251,7 @@ export function attachGin(io: Server, deps: GinDeps): Namespace {
    */
   function recordHand(table: GinTable, state: GinState) {
     table.handsPlayed += 1;
+    logFinished(table, state);
     const score = state.score;
     if (!score || score.winner === null) return;
     const knocker = state.knocker ?? 0;
@@ -251,6 +259,43 @@ export function attachGin(io: Server, deps: GinDeps): Namespace {
     const seat = engineSeat(table, winner);
     table.running[seat] += score.points;
     if (table.target !== null && table.running[seat] >= table.target) table.matchWinner = seat;
+  }
+
+  /**
+   * The hand, for the lab. Everything here is indexed by ENGINE seat, the way
+   * the referee replays it: players[0] opened. Margin is engine seat 0's
+   * points, negative when seat 1 scored.
+   */
+  function logFinished(table: GinTable, state: GinState) {
+    if (!deps.logHand) return;
+    const byEngine = ([0, 1] as Seat[]).map(
+      (e) => table.players.find((p) => engineSeat(table, p.seat) === e)?.name ?? '?'
+    );
+    const score = state.score;
+    const knocker = (state.knocker ?? 0) as Seat;
+    const winner = !score || score.winner === null ? null : score.winner === 'knocker' ? knocker : other(knocker);
+    try {
+      deps.logHand(
+        {
+          v: 1,
+          kind: 'online',
+          level: 'human',
+          matchId: table.matchId,
+          hand: table.handsPlayed,
+          players: byEngine,
+          target: table.target,
+          before: [table.running[engineSeat(table, 0)], table.running[engineSeat(table, 1)]],
+          seed: state.seed,
+          history: state.history,
+          outcome: score?.outcome ?? null,
+          margin: winner === null ? 0 : winner === 0 ? score!.points : -score!.points,
+          finishedAt: new Date().toISOString(),
+        },
+        byEngine.join(' vs ')
+      );
+    } catch (e) {
+      console.error('[gin] could not log hand:', e);
+    }
   }
 
   // --- action parsing -------------------------------------------------------
@@ -346,6 +391,7 @@ export function attachGin(io: Server, deps: GinDeps): Namespace {
         handsPlayed: 0,
         target: target === undefined ? DEFAULT_TARGET : target,
         matchWinner: null,
+        matchId: `${code}-${Date.now().toString(36)}`,
         deals: 0,
         flipped: false,
         touchedAt: Date.now(),
@@ -418,6 +464,7 @@ export function attachGin(io: Server, deps: GinDeps): Namespace {
         table.running = [0, 0];
         table.handsPlayed = 0;
         table.matchWinner = null;
+        table.matchId = `${table.code}-${Date.now().toString(36)}`;
       }
       // The opener alternates every deal, pushes included -- the same rule as
       // solo, and the one the rules page states.

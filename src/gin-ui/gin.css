@@ -1084,3 +1084,92 @@ body {
   .gin-legend { font-size: 11px; }
   .gin-result__foot { gap: 8px 10px; }
 }
+
+/* --- Points arriving at the score ------------------------------------------ */
+
+.gin-tally {
+  display: inline-block;
+  min-width: 1.2em;
+  text-align: center;
+  border-radius: 6px;
+  transition: color 0.3s ease, text-shadow 0.3s ease, transform 0.3s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+.gin-tally.is-bumped {
+  color: #ffd35c !important;
+  transform: scale(1.35);
+  text-shadow: 0 0 14px rgba(255, 211, 92, 0.85), 0 0 2px #8a4b12;
+}
+/* The "+N" in flight. Fixed to the viewport, placed on the score and animated
+   from the result back to it, so it lands exactly where it is going. */
+.gin-gain {
+  position: fixed;
+  z-index: 80;
+  pointer-events: none;
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: #ffd35c;
+  color: #3a2008;
+  border: 2px solid #8a4b12;
+  font-family: 'Alfa Slab One', Georgia, serif;
+  font-size: 20px;
+  line-height: 1.2;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), 0 0 18px rgba(255, 211, 92, 0.6);
+  white-space: nowrap;
+}
+
+/* --- The match, won --------------------------------------------------------- */
+
+.gin-matchwin {
+  position: fixed; inset: 0; z-index: 95;
+  display: grid; place-items: center;
+  padding: 16px;
+  background: rgba(8, 18, 13, 0.62);
+  animation: gin-fade 300ms ease both;
+  --burst: #ffd35c; --edge: #8a4b12;
+}
+.gin-matchwin.is-theirs { --burst: #dfe9f2; --edge: #2c4258; }
+.gin-matchwin__card {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  text-align: center;
+}
+.gin-matchwin__pop { position: absolute; left: 50%; top: 32%; width: 0; height: 0; }
+.gin-matchwin__word {
+  margin: 0;
+  font-family: 'Alfa Slab One', Georgia, serif;
+  font-size: clamp(40px, 11vw, 96px);
+  line-height: 1.05;
+  color: var(--burst);
+  max-width: 92vw;
+}
+.gin-matchwin__group { white-space: nowrap; }
+.gin-matchwin__ch {
+  display: inline-block;
+  text-shadow:
+    -3px -3px 0 var(--edge), 3px -3px 0 var(--edge),
+    -3px 3px 0 var(--edge), 3px 3px 0 var(--edge),
+    -4px 0 0 var(--edge), 4px 0 0 var(--edge),
+    0 -4px 0 var(--edge), 0 4px 0 var(--edge),
+    0 10px 0 rgba(0, 0, 0, 0.3),
+    0 0 40px color-mix(in srgb, var(--burst) 70%, transparent);
+  animation: gin-arrive 900ms cubic-bezier(0.2, 1.5, 0.35, 1) both;
+}
+.gin-matchwin__detail {
+  margin: 0;
+  font-size: 15px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--cream);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  animation: gin-fade 400ms ease 700ms both;
+}
+.gin-matchwin .gin-btn { animation: gin-fade 400ms ease 900ms both; }
+.gin-matchwin.is-still .gin-matchwin__ch { animation: gin-fade 300ms ease both; }
+
+/* Like the knock's pop, but it stays: overshoot, settle, and hold. */
+@keyframes gin-arrive {
+  0%   { transform: scale(0.12) rotate(-20deg); opacity: 0; }
+  45%  { transform: scale(1.25) rotate(5deg); opacity: 1; }
+  65%  { transform: scale(0.93) rotate(-2deg); }
+  82%  { transform: scale(1.03) rotate(0deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+@keyframes gin-fade { from { opacity: 0; } to { opacity: 1; } }

@@ -23,11 +23,19 @@ import { knockOptions } from '../src/gin/rules';
 let httpServer: HttpServer;
 let io: Server;
 let url: string;
+const logged: { record: Record<string, unknown>; players: string }[] = [];
 
 before(async () => {
   httpServer = createServer();
   io = new Server(httpServer);
-  attachGin(io, { async resolveName() { return null; } });
+  attachGin(io, {
+    async resolveName() {
+      return null;
+    },
+    logHand(record, players) {
+      logged.push({ record: record as Record<string, unknown>, players });
+    },
+  });
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   url = `http://localhost:${(httpServer.address() as AddressInfo).port}`;
 });
@@ -287,6 +295,11 @@ describe('gin multiplayer', () => {
 
     const { views, replay } = await finish();
     assert.equal(views.a.phase, 'over');
+    const entry = logged.find((l) => l.record.seed === replay.a.seed);
+    assert.ok(entry, 'the finished hand is logged');
+    assert.equal(entry!.record.level, 'human');
+    assert.deepEqual(entry!.record.players, ['Guest', 'Guest 2'], 'players by engine seat, opener first');
+    assert.equal(entry!.players, 'Guest vs Guest 2');
     assert.equal(replay.a.seed, replay.b.seed);
     assert.equal(replay.a.humanSeat, 0);
     assert.equal(replay.b.humanSeat, 1);

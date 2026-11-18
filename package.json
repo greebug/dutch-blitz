@@ -20,7 +20,9 @@
     "lab:equity": "tsx src/gin/lab/equity.run.ts",
     "lab:championship": "tsx src/gin/lab/championship.run.ts",
     "lab:referee": "tsx src/gin/lab/referee.run.ts",
-    "lab:logs": "tsx src/gin/lab/logs.run.ts"
+    "lab:logs": "tsx src/gin/lab/logs.run.ts",
+    "lab:pull": "tsx src/gin/lab/pull.run.ts",
+    "lab:luck": "tsx src/gin/lab/luck.run.ts"
   },
   "dependencies": {
     "express": "^5.2.1",

@@ -5,6 +5,8 @@ import GinAnalysis from './GinAnalysis';
 import GinBoard from './GinBoard';
 import GinShowdown from './GinShowdown';
 import { BURST_MS } from './GinBurst';
+import { GinMatchWin } from './GinMatchWin';
+import { ScoreTally, TALLY_TOTAL_MS } from './ScoreTally';
 import { savedName, useGinTable } from './useGinTable';
 
 /** The word gets to finish before the next hand lands on top of it. */
@@ -63,6 +65,20 @@ export default function GinOnline() {
     const timer = setTimeout(() => dealHand.current(), wait);
     return () => clearTimeout(timer);
   }, [pushed, canDeal, host, table?.matchWinner]);
+
+  // The match won, announced once the points have landed -- on the transition
+  // only, so a reconnect to a table whose match is already decided stays quiet.
+  const [celebrate, setCelebrate] = useState(false);
+  const winner = table?.matchWinner ?? null;
+  const lastWinner = useRef<number | null | undefined>(undefined);
+  useEffect(() => {
+    const before = lastWinner.current;
+    lastWinner.current = winner;
+    if (winner === null) return setCelebrate(false);
+    if (before !== null) return;
+    const timer = setTimeout(() => setCelebrate(true), TALLY_TOTAL_MS);
+    return () => clearTimeout(timer);
+  }, [winner]);
 
   // A review belongs to the hand it was asked about.
   useEffect(() => setReview(null), [replay]);
@@ -161,11 +177,11 @@ export default function GinOnline() {
           {copied ? 'Copied' : 'Copy'}
         </button>
         <span className="gin-tablescore">
-          <span className="gin-tablescore__me">{me?.name ?? 'You'}</span> <strong>{table.running[table.youAre]}</strong>
+          <span className="gin-tablescore__me">{me?.name ?? 'You'}</span> <ScoreTally value={table.running[table.youAre]} />
           {opponent && (
             <>
               {' · '}
-              {opponentName} <strong>{table.running[theirs]}</strong>
+              {opponentName} <ScoreTally value={table.running[theirs]} />
             </>
           )}
           <span className="gin-tablescore__to"> to {targetLabel(table.target)}</span>
@@ -234,7 +250,7 @@ export default function GinOnline() {
             onNext={t.dealHand}
             nextDisabled={!table.canDeal}
             nextLabel={decided ? 'New match' : undefined}
-            onAnalyze={replay ? () => setReview(replay) : undefined}
+            onAnalyze={replay ? () => setReview({ ...replay, opponent: 'human' }) : undefined}
             note={
               decided
                 ? `${table.matchWinner === table.youAre ? 'You win the match' : `${opponentName} wins the match`}, ${tally}`
@@ -253,6 +269,15 @@ export default function GinOnline() {
       )}
 
       {review && <GinAnalysis hand={review} opponentLabel={opponentName} onClose={() => setReview(null)} />}
+
+      {celebrate && decided && (
+        <GinMatchWin
+          title={`${(table.matchWinner === table.youAre ? me?.name : opponentName) ?? 'You'} wins!`}
+          detail={`${table.running[table.youAre]} – ${table.running[theirs]} · first to ${targetLabel(table.target)}`}
+          mine={table.matchWinner === table.youAre}
+          onClose={() => setCelebrate(false)}
+        />
+      )}
     </div>
   );
 }

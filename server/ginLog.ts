@@ -36,6 +36,17 @@ export function validHand(body: any): string | null {
   return null;
 }
 
+/**
+ * Store one record: the file next to the server, and Postgres when there is
+ * one. Shared by the solo endpoint and the two-player table, which logs its
+ * own hands server-side since it already holds the whole state.
+ */
+export async function storeHand(pool: Pool | null, player: string | null, record: object): Promise<void> {
+  await mkdir(path.dirname(LOG_FILE), { recursive: true });
+  await appendFile(LOG_FILE, JSON.stringify(record) + '\n');
+  if (pool) await pool.query(`INSERT INTO gin_hands (player, record) VALUES ($1, $2)`, [player, record]);
+}
+
 export async function attachGinLog(
   app: Express,
   pool: Pool | null,
@@ -63,11 +74,7 @@ export async function attachGinLog(
     const player = await resolveName(req.headers.cookie).catch(() => null);
     const record = { ...req.body, player, receivedAt: new Date().toISOString() };
     try {
-      await mkdir(path.dirname(LOG_FILE), { recursive: true });
-      await appendFile(LOG_FILE, JSON.stringify(record) + '\n');
-      if (pool) {
-        await pool.query(`INSERT INTO gin_hands (player, record) VALUES ($1, $2)`, [player, record]);
-      }
+      await storeHand(pool, player, record);
       res.json({ ok: true });
     } catch (e: any) {
       res.status(500).json({ error: String(e?.message ?? e) });
