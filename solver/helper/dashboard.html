@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compute Dashboard</title>
+<style>
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --ink: #1b1f24; --muted: #5d6673; --line: #e3e6ea;
+  --idle: #eef0f3; --track: #e9ecf0; --ok: #1a9e5a; --warn: #c77700; --bad: #c62828;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #111418; --card: #1a1e24; --ink: #e8ebef; --muted: #98a2ae; --line: #2a3038;
+          --idle: #232830; --track: #262c34; --ok: #3ccf82; --warn: #f0a13a; --bad: #ff6b6b; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 var(--font); }
+.wrap { max-width: 1500px; margin: 0 auto; padding: 18px 16px 40px; }
+header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+h1 { font-size: 20px; margin: 0; font-weight: 650; }
+.live { color: var(--muted); font-size: 12.5px; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); margin-right: 5px; vertical-align: 1px; }
+.dot.stale { background: var(--warn); } .dot.down { background: var(--bad); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); margin: 4px 0 14px; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.sw { width: 11px; height: 11px; border-radius: 3px; display: inline-block; flex: none; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(560px, 1fr)); gap: 14px; }
+@media (max-width: 620px) { .grid { grid-template-columns: 1fr; } }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 14px 10px; min-width: 0; }
+.mhead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.mhead h2 { font-size: 16px; margin: 0; }
+.err { color: var(--bad); font-size: 12px; margin-top: 4px; }
+.barlabel { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); margin: 12px 0 4px; gap: 8px; flex-wrap: wrap; }
+.barlabel b { color: var(--ink); font-weight: 600; }
+.bar { display: flex; height: 34px; border-radius: 7px; overflow: hidden; background: var(--idle); }
+.seg { height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap;
+       font-size: 11.5px; font-weight: 600; color: #fff; border-right: 1px solid rgba(255,255,255,.35); transition: flex-basis .6s ease; cursor: default; }
+.seg.light { color: #1b1f24; }
+.seg.idle { background: repeating-linear-gradient(135deg, var(--idle), var(--idle) 6px, var(--track) 6px, var(--track) 12px); color: var(--muted); border: 0; }
+.stats { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); margin-top: 6px; }
+.stats b { color: var(--ink); font-weight: 600; }
+.hot { color: var(--warn) !important; } .vhot { color: var(--bad) !important; }
+table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 12.5px; table-layout: fixed; }
+th { text-align: left; font-weight: 600; color: var(--muted); font-size: 11.5px; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+td { padding: 6px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.jname { font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.tag { font-size: 11px; color: var(--muted); }
+.what { color: var(--ink); } .detail { color: var(--muted); font-size: 11.5px; }
+.prog { height: 4px; background: var(--track); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+.prog > div { height: 100%; border-radius: 2px; }
+.queue { margin-top: 14px; }
+.queue h3 { font-size: 15px; margin: 0 0 8px; }
+.qcol h4 { font-size: 13px; margin: 0 0 6px; color: var(--muted); font-weight: 600; }
+.chain { display: flex; flex-wrap: wrap; align-items: stretch; gap: 4px; margin: 0 0 12px; font-size: 12.5px; }
+.chain.finished { opacity: .5; }
+.chip { border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; display: flex; flex-direction: column; gap: 1px;
+        background: var(--bg); max-width: 230px; min-width: 120px; }
+.chip .cl { display: flex; align-items: center; gap: 5px; color: var(--ink); overflow-wrap: anywhere; }
+.chip .cs { color: var(--muted); font-size: 11.5px; }
+.chip .ct { color: var(--ink); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.chip.running { border-color: currentColor; border-width: 2px; padding: 3px 7px; }
+.chip.running .cl { font-weight: 600; }
+.chip.done, .chip.skipped { opacity: .55; }
+.chip.done .cl, .chip.skipped .cl { text-decoration: line-through; }
+.chip.paused { border-style: dashed; }
+.arrow { align-self: center; }
+.qname { align-self: center; }
+tr.finished td { opacity: .5; }
+.about { color: var(--ink); margin-bottom: 2px; }
+.tech { color: var(--muted); font-size: 11.5px; }
+.eta { font-weight: 600; }
+td.when { font-variant-numeric: tabular-nums; }
+.arrow { color: var(--muted); }
+.qname { font-weight: 600; min-width: 92px; }
+.note { color: var(--muted); font-size: 12px; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>Compute</h1><span class="live" id="live">connecting…</span></header>
+  <div class="legend" id="legend"></div>
+  <div class="grid" id="machines"></div>
+  <div class="card queue"><h3>Queue: what starts after what</h3><div class="grid" id="queue"></div></div>
+  <div class="note">CPU blocks are shares of the whole machine (all threads); GPU blocks are each program's share of
+    GPU time (nvidia-smi pmon), scaled to fit the total. "Cap" is the program's GPU-memory limit. Time left comes from each
+    run's own log (its recent speed); queued runs marked "(guess)" use a rough estimate from helper/dash_notes.json, where the
+    descriptions live too. Updates every few seconds.</div>
+</div>
+<script>
+// Hue by project and kind of work; each job of a (project, kind) gets its own shade.
+const KINDS = {
+  gin:     { train: 218, search: 186, belief: 266, exploiter: 200, datagen: 205, wait: 218, queue: 218 },
+  dabashi: { train: 14, datagen: 34, search: 0, belief: 24, exploiter: 10, wait: 20, queue: 20 },
+};
+const KIND_NAME = { train: "training", search: "search & duels", belief: "belief network", exploiter: "exploiter",
+                    datagen: "data generation", infra: "monitoring & sync", wait: "waiting", queue: "queueing" };
+const projectOf = j => j.supervisor === "dabashi" || /dabashi|^gen4/i.test(j.name) ? "dabashi" :
+                       (j.supervisor === "gin" || j.supervisor === "auto" ? "gin" : j.supervisor);
+const current = j => (j.steps || []).find(s => s.state === "running") || (j.steps || []).find(s => s.state !== "done") || (j.steps || [])[0];
+const kindOf = j => { const s = current(j); return s ? s.kind : "train"; };
+const colorCache = {};
+function colorFor(machine, j) {
+  const proj = projectOf(j), kind = kindOf(j);
+  if (kind === "infra") return { bg: "#9aa3ae", light: true };
+  const key = machine + "|" + j.name;
+  if (!colorCache[key]) {
+    const group = machine + "|" + proj + "|" + kind;
+    colorCache[group] = (colorCache[group] || 0) + 1;
+    const n = colorCache[group] - 1;
+    const hue = (KINDS[proj] || KINDS.gin)[kind] ?? 218;
+    const light = [44, 58, 36, 66, 51][n % 5];
+    colorCache[key] = { bg: `hsl(${hue + (n % 2 ? 8 : 0)} ${proj === "dabashi" ? 78 : 62}% ${light}%)`, light: light > 60 };
+  }
+  return colorCache[key];
+}
+const fmt = (x, d = 0) => x == null ? "–" : (+x).toFixed(d);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// --- notes (helper/dash_notes.json) and time estimates ----------------------------------------
+let NOTES = [];
+const PUBLIC = location.pathname.startsWith("/compute");
+function noteFor(key) {
+  for (const n of NOTES) { try { if (new RegExp(n.match).test(key || "")) return n; } catch (e) {} }
+  return {};
+}
+function clock(t) {
+  const d = new Date(t * 1000), now = new Date();
+  let s = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).replace(/\s/g, " ").toLowerCase();
+  if (d.toDateString() !== now.toDateString()) s = d.toLocaleDateString([], { weekday: "short" }) + " " + s;
+  return s;
+}
+function dur(sec) {
+  if (sec == null) return "?";
+  if (sec < 90) return "a minute or two";
+  if (sec < 3600) return `~${Math.round(sec / 60)} min`;
+  if (sec < 48 * 3600) return `~${(sec / 3600).toFixed(sec < 10 * 3600 ? 1 : 0)} h`;
+  return `~${(sec / 86400).toFixed(1)} days`;
+}
+const isDone = s => !!s && (s.state === "done" || s.state === "skipped");
+// Walk a job's chain: when each step should start and end (epoch s). The running step's end comes
+// from its own log; queued steps use est_s (measured) or the note's est_h (a rough guess).
+function plan(j) {
+  const now = Date.now() / 1000;
+  let t = j.paused ? null : now;
+  const out = [];
+  const add = (key, label, s, isQueue) => {
+    const n = noteFor(key), p = { key, label, s, n, queue: isQueue };
+    if (isDone(s)) { p.doneAt = s.done_at; out.push(p); return; }
+    if (s.state === "running") {
+      p.start = now;
+      if (s.always) { p.always = true; t = null; }
+      else if (s.open) { p.open = true; p.next = s.next_at; t = null; }
+      else if (s.eta_at) { p.end = s.eta_at; t = s.eta_at; }
+      else t = null;
+    } else {
+      const d = s.est_s != null ? s.est_s : (n.est_h != null ? n.est_h * 3600 : null);
+      p.dur = d; p.start = t;
+      if (s.open) { p.open = true; t = null; }
+      else { p.end = t != null && d != null ? t + d : null; t = p.end; }
+    }
+    out.push(p);
+  };
+  for (const s of j.steps || []) {
+    add(s.key, s.label, s, false);
+    for (const q of s.queue || []) {
+      const name = typeof q === "string" ? q : q.name;
+      add(name, name, { state: j.paused ? "paused" : "queued", est_s: q.est_s ?? null, kind: "search" }, true);
+    }
+  }
+  return out;
+}
+function jobStatus(j) {
+  const steps = j.steps || [];
+  if (j.paused) return "paused";
+  if (steps.length && steps.every(isDone)) return "finished";
+  if (!j.alive) return "stopped";
+  return "running";
+}
+const finishedAt = j => Math.max(0, ...(j.steps || []).map(s => s.done_at || 0)) || null;
+function aboutOf(steps, ci) {  // for a finished job, ci is its last step that ran (not skipped)
+  const cur = steps[ci] || {}, s = cur.s || {};
+  let about = (cur.n && cur.n.about) || "";
+  if (s.kind === "wait") {
+    const nxt = steps.slice(ci + 1).find(p => p.n && p.n.about);
+    about = `Waits for ${s.waits_label || "another run"} to finish, so that gets the GPU first.` + (nxt ? " Then: " + nxt.n.about : "");
+  }
+  return about;
+}
+
+function bar(segs, total) {
+  // segs: [{label, pct, color, light, title}] ; total = the bar's busy %, the rest is idle
+  let used = segs.reduce((a, s) => a + s.pct, 0);
+  const idle = Math.max(0, 100 - Math.max(used, total));
+  const out = segs.filter(s => s.pct > 0.15).map(s => {
+    const txt = s.pct >= 6 ? `${esc(s.label)} ${fmt(s.pct)}%` : (s.pct >= 3 ? `${fmt(s.pct)}%` : "");
+    return `<div class="seg ${s.light ? "light" : ""}" style="flex-basis:${s.pct}%;background:${s.color}" title="${esc(s.title || s.label)}: ${fmt(s.pct, 1)}%">${txt}</div>`;
+  });
+  if (idle > 0.2) out.push(`<div class="seg idle" style="flex-basis:${idle}%" title="idle ${fmt(idle, 1)}%">${idle >= 7 ? "idle " + fmt(idle) + "%" : ""}</div>`);
+  return `<div class="bar">${out.join("")}</div>`;
+}
+
+function throttleText(t) {
+  const v = parseInt(t || "0", 16), out = [];
+  if (v & 0x4) out.push("power cap"); if (v & 0x20) out.push("thermal (software)");
+  if (v & 0x40) out.push("thermal (hardware)"); if (v & 0x8) out.push("hardware slowdown"); if (v & 0x80) out.push("power brake");
+  return out.length ? out.join(", ") : "none";
+}
+
+// Per-program readings are short samples (GPU especially): show a running average of the last few.
+const smooth = {};
+function smoothJobs(key, d) {
+  if (!d || d._smoothed === d.time) return;
+  for (const j of d.jobs) {
+    const k = key + "|" + j.name, prev = smooth[k];
+    if (prev && j.alive) { j.cpu = 0.6 * prev.cpu + 0.4 * j.cpu; j.gpu = 0.6 * prev.gpu + 0.4 * j.gpu; }
+    smooth[k] = { cpu: j.cpu, gpu: j.gpu };
+  }
+  d._smoothed = d.time;
+}
+const lastData = {};
+
+function machineCard(key, m) {
+  if (m.data && lastData[key] && lastData[key].time === m.data.time) m.data = lastData[key];
+  else if (m.data) { smoothJobs(key, m.data); lastData[key] = m.data; }
+  const d = m.data;
+  const age = m.age == null ? "" : `${m.age}s ago`;
+  if (!d) return `<div class="card"><div class="mhead"><h2>${esc(m.label)}</h2></div><div class="err">${esc(m.error || "no data")}</div></div>`;
+  const jobs = d.jobs.filter(j => !j.paused);
+  // CPU
+  const cpuSegs = jobs.filter(j => j.cpu > 0).map(j => { const c = colorFor(key, j); return { label: j.name, pct: j.cpu, color: c.bg, light: c.light }; });
+  const jobsCpu = cpuSegs.reduce((a, s) => a + s.pct, 0);
+  const otherCpu = Math.max(0, (d.cpu_total ?? jobsCpu) - jobsCpu);
+  const topOther = (d.other_cpu || []).slice(0, 4).map(([n, v]) => `${n} ${fmt(v, 1)}%`).join(", ");
+  if (otherCpu > 0.2) cpuSegs.push({ label: "other", pct: otherCpu, color: "#c7ced8", light: true, title: "other programs" + (topOther ? " (" + topOther + ")" : "") });
+  // GPU
+  const g = d.gpu || {};
+  const util = g.util ?? 0;
+  let gpuSegs = jobs.filter(j => j.gpu > 0).map(j => { const c = colorFor(key, j); return { label: j.name, pct: j.gpu, color: c.bg, light: c.light }; });
+  const sum = gpuSegs.reduce((a, s) => a + s.pct, 0);
+  if (sum > util && sum > 0) gpuSegs.forEach(s => s.pct *= util / sum);
+  const rest = Math.max(0, util - gpuSegs.reduce((a, s) => a + s.pct, 0));
+  if (rest > 1) gpuSegs.push({ label: "unattributed", pct: rest, color: "#c7ced8", light: true, title: "GPU time not attributed to a job (sampling, desktop)" });
+  const temp = g.temp_c, tcls = temp >= 83 ? "vhot" : temp >= 76 ? "hot" : "";
+  const usesGpu = j => j.alive && j.gpu_cap && j.procs && j.procs["python.exe"];  // a cap only matters while its Python runs
+  const capSum = jobs.reduce((a, j) => a + (usesGpu(j) ? j.gpu_cap : 0), 0);
+  const vramGB = (g.mem_total_mb || 0) / 1024;
+  const order = { running: 0, stopped: 1, paused: 2, finished: 3 };
+  const sorted = d.jobs.map((j, i) => [j, i]).sort((a, b) => (order[jobStatus(a[0])] - order[jobStatus(b[0])]) ||
+    (jobStatus(a[0]) === "finished" ? (finishedAt(b[0]) || 0) - (finishedAt(a[0]) || 0) : a[1] - b[1])).map(x => x[0]);
+  const rows = sorted.map(j => {
+    const c = colorFor(key, j), status = jobStatus(j);
+    const steps = plan(j), now = Date.now() / 1000;
+    let ci = steps.findIndex(p => !isDone(p.s));
+    if (status === "finished") ci = steps.map(p => p.s && p.s.state).lastIndexOf("done");
+    if (ci < 0) ci = 0;
+    const cur = steps[ci] || {}, s = cur.s || {};
+    const state = status === "running" ? (s.state || "running") : (status === "stopped" ? "not running" : status);
+    const about = aboutOf(steps, ci);
+    const pct = s.pct != null && status !== "finished" ? `<div class="prog"><div style="width:${Math.round(s.pct * 100)}%;background:${c.bg}"></div></div>` : "";
+    let when = "–";
+    if (status === "finished") when = `<div class="eta">finished${finishedAt(j) ? " " + clock(finishedAt(j)) : ""}</div>`;
+    else if (status === "paused") when = `<div class="eta">paused</div>`;
+    else if (status === "stopped") when = `<div class="eta">not running</div>`;
+    else {
+      if (cur.always) when = `<div class="eta">always on</div>`;
+      else if (cur.open) when = `<div class="eta">open-ended</div>` + (cur.next ? `<div class="detail">next result ≈ ${clock(cur.next)}</div>` : "");
+      else if (cur.end) when = `<div class="eta">${dur(cur.end - now)}</div><div class="detail">≈ ${clock(cur.end)}${s.kind === "datagen" ? " (at the ceiling)" : ""}</div>`;
+      const later = steps.slice(ci + 1).filter(p => !isDone(p.s));
+      if (later.length) {
+        const last = later[later.length - 1];
+        when += `<div class="detail">then ${later.length} more${last.end ? ", all done ≈ " + clock(last.end) : (later.some(p => p.open) ? " (open-ended)" : "")}</div>`;
+      }
+    }
+    return `<tr class="${status === "finished" ? "finished" : ""}"><td><div class="jname"><span class="sw" style="background:${c.bg}"></span>${esc(j.name)}</div>
+      <div class="tag">${projectOf(j)} · ${KIND_NAME[kindOf(j)] || kindOf(j)}${state !== "running" ? " · " + state : ""}</div></td>
+      <td>${about ? `<div class="about">${esc(about)}</div>` : ""}<div class="tech">${esc(s.label || "")}${s.detail ? " · " + esc(s.detail) : ""}</div>${pct}</td>
+      <td class="when">${when}</td>
+      <td class="num">${j.paused || status === "finished" ? "–" : fmt(j.cpu, 1) + "%"}</td><td class="num">${j.paused || status === "finished" ? "–" : fmt(j.gpu, 1) + "%"}</td>
+      <td class="num">${j.gpu_cap && status !== "finished" ? fmt(j.gpu_cap * vramGB, 1) + " GB" : "–"}</td></tr>`;
+  }).join("");
+  return `<div class="card">
+    <div class="mhead"><h2>${esc(m.label)}</h2><span class="live"><span class="dot ${m.ok ? (m.age > 30 ? "stale" : "") : "down"}"></span>${esc(d.time)} · ${age}</span></div>
+    ${m.ok ? "" : `<div class="err">last reading kept: ${esc(m.error)}</div>`}
+    <div class="barlabel"><span><b>CPU</b> · ${d.cores} threads</span><span><b>${fmt(d.cpu_total)}%</b> busy · RAM <b>${fmt(d.ram.used_gb, 1)}</b> / ${fmt(d.ram.total_gb, 1)} GB</span></div>
+    ${bar(cpuSegs, d.cpu_total ?? 0)}
+    <div class="barlabel"><span><b>GPU</b> · ${esc(g.name || "")}</span><span><b>${fmt(util)}%</b> busy</span></div>
+    ${bar(gpuSegs, util)}
+    <div class="stats"><span>temp <b class="${tcls}">${fmt(temp)}°C</b></span><span>power <b>${fmt(g.power_w)}</b> / ${fmt(g.power_limit_w)} W</span>
+      <span>VRAM <b>${fmt((g.mem_used_mb || 0) / 1024, 1)}</b> / ${fmt(vramGB, 1)} GB (caps of running programs add up to ${fmt(capSum * vramGB, 1)} GB)</span>
+      <span>clock <b>${fmt(g.clock_mhz)}</b> / ${fmt(g.clock_max_mhz)} MHz</span><span>fan <b>${fmt(g.fan_pct)}%</b></span>
+      <span>slowdown: <b>${throttleText(g.throttle)}</b></span></div>
+    <table><colgroup><col style="width:19%"><col><col style="width:15%"><col style="width:8%"><col style="width:8%"><col style="width:9%"></colgroup>
+      <tr><th>Program</th><th>Doing now</th><th>Est. time left</th><th class="num">CPU</th><th class="num">GPU</th><th class="num">Cap</th></tr>${rows}</table>
+  </div>`;
+}
+
+function queueCol(key, m) {
+  const d = m.data;
+  if (!d) return `<div class="qcol"><h4>${esc(m.label)}</h4><div class="detail">no data</div></div>`;
+  const lines = [], now = Date.now() / 1000;
+  const jobs = [...d.jobs].sort((a, b) => (jobStatus(a) === "finished") - (jobStatus(b) === "finished"));
+  for (const j of jobs) {
+    const raw = j.steps || [];
+    const interesting = j.paused || raw.length > 1 || raw.some(s => (s.queue || []).length);
+    if (!interesting) continue;
+    const c = colorFor(key, j), status = jobStatus(j);
+    const chips = plan(j).map((p, i) => {
+      const s = p.s || {}, st = j.paused ? "paused" : (s.state || "queued");
+      let time = "";
+      if (st === "done") time = p.doneAt ? "done " + clock(p.doneAt) : "done";
+      else if (st === "skipped") time = "skipped";
+      else if (st === "running") time = p.always ? "running" : p.open ? "running · open-ended" : p.end ? `running · ${dur(p.end - now)} left` : "running";
+      else if (st === "paused") time = "paused";
+      else if (s.kind === "wait") time = p.end ? `until ≈ ${clock(p.end)}` : "waiting";
+      else {
+        time = p.open ? "open-ended" : (p.dur != null ? (p.dur < 60 ? "instant" : dur(p.dur)) : "time unknown");
+        if (p.start) time += ` · starts ≈ ${clock(p.start)}`;
+        if (p.n.est_h != null && p.s.est_s == null && p.dur >= 60) time += " (guess)";
+      }
+      const short = p.n.short || "";
+      return (i ? `<span class="arrow">→</span>` : "") +
+        `<span class="chip ${st}" style="${st === "running" ? "color:" + c.bg : ""}" title="${esc(p.n.about || s.detail || "")}">
+          <span class="cl"><span class="sw" style="background:${c.bg}"></span>${esc(p.label)}</span>
+          ${short ? `<span class="cs">${esc(short)}</span>` : ""}<span class="ct">${esc(time)}</span></span>`;
+    });
+    lines.push(`<div class="chain ${status === "finished" ? "finished" : ""}"><span class="qname">${esc(j.name)}${j.paused ? " (paused)" : status === "finished" ? " (finished)" : ""}</span>${chips.join("")}</div>`);
+  }
+  return `<div class="qcol"><h4>${esc(m.label)}</h4>${lines.join("") || '<div class="detail">nothing queued</div>'}</div>`;
+}
+
+function legend() {
+  const items = [["gin", "train"], ["gin", "search"], ["gin", "belief"], ["gin", "exploiter"], ["dabashi", "train"], ["dabashi", "datagen"]]
+    .map(([p, k]) => `<span><span class="sw" style="background:hsl(${KINDS[p][k]} ${p === "dabashi" ? 78 : 62}% 48%)"></span>${p === "gin" ? "Gin" : "DaBaShi"} ${KIND_NAME[k]}</span>`);
+  items.push(`<span><span class="sw" style="background:#9aa3ae"></span>monitoring & sync</span>`, `<span><span class="sw" style="background:#c7ced8"></span>other programs</span>`);
+  document.getElementById("legend").innerHTML = items.join("");
+}
+
+async function tick() {
+  try {
+    let s, pushedAgo = null;
+    if (PUBLIC) {
+      // bingbongblitz.com/compute: one snapshot pushed by Jesse's PC (compute_push.py), notes included.
+      const r = await fetch("/compute/api/state", { cache: "no-store", credentials: "same-origin" });
+      if (r.status === 401) { location.reload(); return; }
+      const raw = await r.json();
+      s = raw.machines || {};
+      NOTES = raw.notes || [];
+      if (raw.receivedAt) {
+        pushedAgo = Math.max(0, Math.round((raw.serverNow - raw.receivedAt) / 1000));
+        for (const m of Object.values(s)) if (m.age != null) m.age += pushedAgo;
+      }
+    } else {
+      s = await (await fetch("/api/state", { cache: "no-store" })).json();
+      try { NOTES = (await (await fetch("/api/notes", { cache: "no-store" })).json()).steps || []; } catch (e) {}
+    }
+    document.getElementById("machines").innerHTML = Object.entries(s).map(([k, m]) => machineCard(k, m)).join("");
+    document.getElementById("queue").innerHTML = Object.entries(s).map(([k, m]) => queueCol(k, m)).join("");
+    const stale = pushedAgo != null && pushedAgo > 90;
+    document.getElementById("live").innerHTML = PUBLIC
+      ? (pushedAgo == null ? `<span class="dot down"></span>no update from the PCs yet`
+        : `<span class="dot ${stale ? "stale" : ""}"></span>last update from the PCs ${pushedAgo < 5 ? "just now" : pushedAgo < 90 ? pushedAgo + " s ago" : dur(pushedAgo).replace("~", "") + " ago"}${stale ? " (Jesse's PC may be off or asleep)" : ""}`)
+      : `<span class="dot"></span>live · ${new Date().toLocaleTimeString()}`;
+  } catch (e) {
+    document.getElementById("live").innerHTML = `<span class="dot down"></span>${PUBLIC ? "can't reach the server" : "dashboard server not reachable"}`;
+  }
+}
+legend(); tick(); setInterval(tick, 3000);
+</script>
+</body>
+</html>

@@ -17,6 +17,7 @@ import { Pool } from 'pg';
 import { randomUUID } from 'crypto';
 import { attachGin } from './gin';
 import { attachGinLog, storeHand } from './ginLog';
+import { attachCompute } from './compute';
 
 import { gameReducer } from '../src/game/engine';
 import { dealPlayer } from '../src/game/deck';
@@ -394,6 +395,9 @@ attachGin(io, {
 attachGinLog(app, pool, async (cookieHeader) => (await resolveGwUser(cookieHeader))?.username ?? null).catch(
   (e) => console.error('gin log:', e)
 );
+
+// Password-gated view of the training PCs (server/compute.ts). Off unless its two secrets are set.
+attachCompute(app);
 
 // ─── Blueberry Trio: community puzzle API ───────────────────────────────────────
 // Open publishing (no auth) — the client validates uniqueness before posting; the
